@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TechVault</title>
+
+  <link rel="stylesheet" href="style.css">
+
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar" id="topBar" style="display:none;">
+  <button class="icon-btn" id="hamburgerBtn" aria-label="Menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <img class="top-logo" src="logo.png" alt="Technovators logo">
+
+  <span class="top-wordmark">TechVault</span>
+  <div class="top-spacer"></div>
+  <div class="topbar-search">
+    <div class="search-pill">
+      <input id="topSearch" placeholder="Search" autocomplete="off">
+      <button class="search-clear-btn" id="topSearchClear" type="button" aria-label="Clear search" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+      <button class="search-icon-btn" id="topSearchBtn" type="button" aria-label="Search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      </button>
+    </div>
+    <div class="search-suggest" id="searchSuggest"></div>
+  </div>
+
+  <div class="music-picker">
+    <button class="global-save-btn" id="globalSaveBtn" aria-label="Music">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      <span class="btn-label">Music</span>
+    </button>
+    <div class="music-popup" id="musicPopup">
+      <div class="music-popup-head">
+        <h3>Music</h3>
+      </div>
+      <div class="music-toolbar">
+        <div class="music-search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="songSearch" placeholder="Search your songs">
+        </div>
+        <button class="add-song-btn" id="addSongBtn">+ Add song</button>
+      </div>
+      <div class="song-list" id="songList"></div>
+    </div>
+  </div>
+
+  <!-- Theme button -->
+  <button class="theme-btn" id="themeBtn" aria-label="Toggle dark mode">
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="icon-dim" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
+  </button>
+
+  <div class="device-picker">
+    <button class="grid-btn" id="deviceTrigger" aria-label="Devices">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/></svg>
+    </button>
+    <div class="device-panel" id="devicePanel">
+      <div class="dp-section dp-favs">
+        <div class="dp-head">
+          <span>Your favorites</span>
+          <button class="dp-edit" id="dpEditBtn" aria-label="Edit favorites">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+          <button class="dp-save-btn" id="dpSaveBtn" style="display:none;">Save</button>
+        </div>
+        <div class="dp-grid" id="dpFavGrid"></div>
+      </div>
+      <div class="dp-section dp-more">
+        <div class="dp-grid" id="dpMoreGrid"></div>
+        <div class="device-reset" id="deviceReset" style="margin-top:10px;">Reset to Web (no frame)</div>
+      </div>
+    </div>
+  </div>
+  <button class="icon-btn" id="settingsBtn" aria-label="Settings">
+    <img src="assets/settings-icon.png" alt="Settings" style="width:24px;height:24px;display:block;object-fit:contain;">
+  </button>
+</div>
+
+<div class="save-toast" id="saveToast">Saved</div>
+
+<div class="stage" id="stage">
+  <div class="device-frame" id="deviceFrame" data-device="web">
+    <div class="frame-screen" id="frameScreen">
+
+      <!-- Categories (home) -->
+      <section class="view active" id="categoriesView">
+        <div class="cat-shell">
+          <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+          <aside class="sidebar" id="sidebar">
+            <div class="side-scroll">
+              <div class="nav-row" id="homeNav">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 22V12h6v10"/></svg>
+                Home
+              </div>
+              <div class="nav-row" id="todayNav">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.93L12 8h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+                Categories
+              </div>
+              <div id="sideCatList"></div>
+            </div>
+          </aside>
+          <div class="cat-main">
+            <!-- Rotating background -->
+            <div class="cat-bg" id="catBg">
+              <div class="cat-bg-slide active" id="catBgSlideA"></div>
+              <div class="cat-bg-slide" id="catBgSlideB"></div>
+              <div class="cat-bg-overlay"></div>
+              <div class="cat-bg-progress"><div class="cat-bg-progress-fill" id="bgProgressFill"></div></div>
+            </div>
+            <button class="bg-arrow bg-arrow-left" id="bgArrowLeft" aria-label="Previous background">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button class="bg-arrow bg-arrow-right" id="bgArrowRight" aria-label="Next background">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+
+            <div class="recent-block" id="recentBlock">
+              <h3 class="section-title">Recent History</h3>
+              <div class="home-feed-wrap">
+                <button class="feed-arrow feed-arrow-left" id="feedArrowLeft" aria-label="Scroll left">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <div class="home-feed" id="homeFeed"></div>
+                <button class="feed-arrow feed-arrow-right" id="feedArrowRight" aria-label="Scroll right">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <h3 class="section-title">Browse by category</h3>
+            <div class="today-grid" id="todayGrid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section (topic list) -->
+      <section class="view" id="sectionView">
+        <div class="ring-block" id="ringBlock">
+          <div class="ringwrap" id="ringWrap"><div class="ring" id="ring"></div></div>
+        </div>
+        <div class="screen-pad">
+          <div class="back-row">
+            <button class="back-btn" id="backBtnSection">&larr; Today</button>
+            <h3 class="detail-title" id="sectionTitle"></h3>
+            <div class="office-switch" id="officeSwitch" style="display:none;"></div>
+          </div>
+          <div class="topic-list" id="sectionGrid"></div>
+        </div>
+      </section>
+
+      <!-- Lesson (videos / PDF) -->
+      <section class="view" id="detailView">
+        <div class="screen-pad">
+          <div class="back-row">
+            <button class="back-btn" id="backBtn">&larr; Back</button>
+            <h3 class="detail-title" id="detailTitle"></h3>
+            <span class="detail-code" id="detailCode"></span>
+          </div>
+
+          <!-- READ ALOUD BAR (Word / Excel / PowerPoint lessons) -->
+          <div class="ra-bar" id="raBar">
+            <button class="ra-btn ra-main" id="raPlay" type="button">
+              <span class="ra-ico" id="raIco"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></span>
+              <span id="raPlayLbl">Read aloud</span>
+            </button>
+            <button class="ra-btn" id="raPrev" type="button" aria-label="Previous">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg>
+            </button>
+            <button class="ra-btn" id="raNext" type="button" aria-label="Next">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7L4 19z"/></svg>
+            </button>
+            <button class="ra-btn" id="raStop" type="button" aria-label="Stop">
+              <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+            </button>
+            <span class="ra-count" id="raCount"></span>
+            <span class="ra-spacer"></span>
+            <select class="ra-sel" id="raRate" aria-label="Speed">
+              <option value="0.75">0.75x</option>
+              <option value="1" selected>1x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+            </select>
+            <select class="ra-sel ra-voice" id="raVoice" aria-label="Voice"></select>
+          </div>
+
+          <div class="video-grid" id="videoGrid"></div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section class="view" id="settingsView">
+        <div class="screen-pad">
+          <div class="back-row">
+            <button class="back-btn" id="backBtnSettings">&larr; Back</button>
+            <h3 class="detail-title">System Description</h3>
+          </div>
+
+          <div class="settings-card gs-card about-card-yellow">
+            <div class="gs-row" data-row="about">
+              <div class="gs-row-head"><span>About TechVault</span><svg class="gs-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+              <div class="gs-row-body">
+                <p style="line-height:1.6;">TechVault is an offline-friendly learning and troubleshooting library for IT students. It organizes video lessons by topic &mdash; Hardware, Networking, Software, Programming, and IT Maintenance &amp; Safety &mdash; and includes Microsoft Word, Excel, and PowerPoint lessons with shortcut guides and PDF notes. You can search topics, pick up a video where you left off through Recent History, play music while you study, and switch between Normal, Dark, and Dim themes.</p>
+              </div>
+            </div>
+            <!-- Hidden dark theme switch (kept so script.js still works) -->
+            <div class="gs-row gs-row-static" style="display:none;">
+              <div class="gs-row-head" style="cursor:default;">
+                <span>Dark theme</span>
+                <label class="switch">
+                  <input type="checkbox" id="darkThemeSwitch">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="dev-toggle-wrap">
+            <button class="dev-toggle" id="devToggleBtn" type="button">
+              <span class="dev-toggle-label">Meet the Creators</span>
+              <span class="dev-toggle-arrow">&rarr;</span>
+            </button>
+          </div>
+          <div class="dev-panel" id="devPanel">
+            <div class="dev-arches" id="devArches"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- About -->
+      <section class="view" id="aboutView">
+        <div class="screen-pad">
+          <div class="back-row">
+            <button class="back-btn" id="backBtnAbout">&larr; Back</button>
+            <h3 class="detail-title">About</h3>
+          </div>
+          <div class="about-tabs">
+            <button class="about-tab active" data-tab="products">Products</button>
+            <button class="about-tab" data-tab="company">Company info</button>
+            <button class="about-tab" data-tab="news">News</button>
+          </div>
+
+          <div class="about-panel active" id="aboutProducts">
+            <div class="about-item">
+              <h4>TechVault</h4>
+              <p>A troubleshooting video library organized by problem — hardware, networking, software, programming, and IT maintenance &amp; safety — plus a spot to keep the music you play while you watch.</p>
+            </div>
+            <div class="about-item">
+              <h4>TechVault</h4>
+              <p>A companion discovery app for finding food, places, and people to follow — built offline-first, so cached results stay put even without signal.</p>
+            </div>
+          </div>
+
+          <div class="about-panel" id="aboutCompany">
+            <div class="about-item">
+             
+            </div>
+            <div class="about-item">
+              
+            </div>
+          </div>
+
+          <div class="about-panel" id="aboutNews">
+            <div class="about-item"><h4>Course-organized topics</h4><p>Categories are now grouped into Hardware, Networking, Software, Programming, and IT Maintenance &amp; Safety, each with focused sub-topics.</p></div>
+            <div class="about-item"><h4>Developer-managed library</h4><p>Only the developer account can upload or remove videos and songs — everyone else just watches and listens.</p></div>
+            <div class="about-item"><h4>Accounts &amp; favorites</h4><p>Added register/log-in and a favorites picker for the device-frame menu.</p></div>
+            <div class="about-item"><h4>Device frames</h4><p>Preview the app inside an iPhone, Android, iPad, Mac, Windows, Vision, Watch, or TV frame.</p></div>
+            <div class="about-item"><h4>Categories, restyled</h4><p>Moved from a plain category grid to an App Store-style "Today" layout with colorful feature cards.</p></div>
+            <div class="about-item"><h4>First release</h4><p>Launched with a set of troubleshooting categories and per-category local video uploads.</p></div>
+            <div class="about-item"><h4>Music, as a popup</h4><p>Music now opens as a quick popup right from the top bar instead of a separate page.</p></div>
+          </div>
+        </div>
+      </section>
+  </div>
+  </div>
+</div>
+
+<input type="file" id="videoInput" accept="video/*">
+<input type="file" id="songInput" accept="audio/*" multiple>
+<script src="script.js"></script>
+<!-- Theme button: Normal -> Dark -> Dim -->
+<script>
+(function(){
+  var btn = document.getElementById('themeBtn');
+  var sw  = document.getElementById('darkThemeSwitch');
+  if(!btn) return;
+  var THEMES  = ['normal', 'dark', 'dim'];
+  var NAMES   = { normal:'Normal', dark:'Dark', dim:'Dim' };
+  var FILTERS = {
+    normal: 'none',
+    dark:   'invert(1) hue-rotate(180deg)',
+    dim:    'invert(1) hue-rotate(180deg) contrast(.85)'
+  };
+  var idx = 0;
+  function apply(t){
+    document.body.style.filter = FILTERS[t];
+    document.body.setAttribute('data-theme', t);
+    btn.setAttribute('data-theme', t);
+    btn.title = NAMES[t] + ' theme';
+    if(sw) sw.checked = (t !== 'normal');
+  }
+  btn.addEventListener('click', function(){
+    idx = (idx + 1) % THEMES.length;
+    apply(THEMES[idx]);
+    if(typeof showToast === 'function') showToast(NAMES[THEMES[idx]] + ' theme');
+  });
+  apply('normal');
+})();
+</script>
+</body>
+</html>
