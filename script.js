@@ -1179,7 +1179,39 @@
       { name: 'Power Supply',    desc: 'Converts power from the wall outlet into the voltages the computer parts need.' },
       { name: 'Storage Drive',   desc: 'Stores your files, programs, and the operating system permanently.' }
     ],
-    net: ph(), sw: ph(), prog: ph(), maint: ph(), word: ph()
+    net: [
+      { name: 'Router',               desc: 'Connects your network to the internet and directs data between devices. It also assigns IP addresses to connected devices.' },
+      { name: 'Network Switch',       desc: 'Connects multiple wired devices in a local network and sends data only to the device that needs it.' },
+      { name: 'Ethernet Cable',       desc: 'A twisted-pair cable (UTP) that carries network data between computers, switches, and routers.' },
+      { name: 'RJ45 Connector',       desc: 'The plug at the end of an Ethernet cable. Wires are arranged in the T568A or T568B order and crimped into it.' },
+      { name: 'Modem',                desc: 'Converts the signal from your internet provider into data your router and devices can use.' },
+      { name: 'Wireless Access Point', desc: 'Provides Wi-Fi so laptops, phones, and other devices can join the network without cables.' }
+    ],
+    sw: [
+      { name: 'Operating System',     desc: 'The main software that manages the hardware and lets you run programs. Windows is a common example.' },
+      { name: 'Bootable USB',         desc: 'A flash drive prepared with an installer so a computer can start from it and install or repair an operating system.' },
+      { name: 'Application Software', desc: 'Programs you use for tasks such as writing documents, browsing the web, or editing photos.' },
+      { name: 'Device Driver',        desc: 'Small software that lets the operating system communicate with hardware such as the printer, graphics card, or sound card.' },
+      { name: 'Antivirus',            desc: 'Protects the computer by detecting, blocking, and removing viruses and other malware.' },
+      { name: 'Windows Troubleshooting', desc: 'Tools and steps used to find and fix common problems such as slow performance, errors, and startup failures.' }
+    ],
+    prog: [
+      { name: 'HTML',                 desc: 'The markup language that builds the structure and content of a web page: headings, paragraphs, images, and links.' },
+      { name: 'CSS',                  desc: 'Controls how a web page looks, including colors, fonts, spacing, and layout.' },
+      { name: 'JavaScript',           desc: 'Adds behavior to a web page, such as buttons that respond, menus, and interactive features.' },
+      { name: 'Code Editor',          desc: 'A program for writing and editing code. It helps with color-coded syntax, suggestions, and finding mistakes.' },
+      { name: 'Programming Concepts', desc: 'Basic building blocks of code: variables, conditions, loops, and functions.' },
+      { name: 'Website',              desc: 'The finished result: HTML, CSS, and JavaScript working together and shown in a web browser.' }
+    ],
+    maint: [
+      { name: 'Preventive Maintenance', desc: 'Regular cleaning and checking of the computer, such as removing dust, to prevent overheating and breakdowns.' },
+      { name: 'Cable Management',     desc: 'Organizing and securing cables so they are tidy, safe to walk around, and do not block airflow.' },
+      { name: 'ESD Safety',           desc: 'Static electricity can damage components. Use an anti-static wrist strap and mat when handling parts.' },
+      { name: 'Data Backup',          desc: 'Keeping extra copies of your files on another drive or in the cloud so you can recover them if something fails.' },
+      { name: 'Occupational Health and Safety', desc: 'Safe work practices that protect you from injury, such as proper posture, safe tools, and electrical safety.' },
+      { name: '5S',                   desc: 'A workplace method: Sort, Set in order, Shine, Standardize, and Sustain. It keeps the work area clean and efficient.' }
+    ],
+    word: ph()
   };
 
   var view   = document.getElementById('sectionView');
