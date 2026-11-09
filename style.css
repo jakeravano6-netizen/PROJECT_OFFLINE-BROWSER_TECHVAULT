@@ -831,3 +831,67 @@ body[data-theme="dim"] .dev-arches{filter:contrast(1.1765) invert(1) hue-rotate(
   .ra-bar{border-radius:18px;}
   .ra-sel.ra-voice{display:none;}
 }
+
+
+/* =====================================================================
+   FIX: tamang taas sa phone, background na hindi napuputol, mobile top bar
+   (Nasa pinakadulo ng file; huwag ilipat sa itaas)
+   ===================================================================== */
+
+/* 1. Tamang taas ng page sa phone (hindi na 100vh - 70px) */
+html, body{height:100%; overflow-x:hidden;}
+body{
+  display:flex; flex-direction:column;
+  height:100vh; height:100dvh; min-height:0;
+}
+.top-bar{flex:0 0 auto; min-width:0;}
+.stage{flex:1 1 auto; min-height:0;}
+.stage:not(.framed){display:flex; flex-direction:column;}
+.stage.framed{overflow:auto; min-height:0;}
+.device-frame[data-device="web"]{flex:1 1 0; width:100%; height:auto; min-height:0;}
+.device-frame[data-device="web"] .frame-screen{
+  position:absolute; inset:0; width:auto; height:auto; min-height:0;
+}
+
+/* 2. Background na hindi napuputol kapag nag-scroll */
+#categoriesView .cat-main{--px:26px; --py:22px;}
+#categoriesView .cat-main > .cat-bg{
+  position:sticky; top:0; z-index:0;
+  height:100cqh;
+  margin:calc(-1 * var(--py)) calc(-1 * var(--px)) calc(var(--py) - 100cqh);
+}
+
+/* 3. Mga arrow ng background: nakasunod sa screen, hindi sa scroll */
+#categoriesView .cat-main > .bg-arrow{
+  position:sticky; top:calc(50cqh - 19px); left:auto; right:auto;
+  transform:none; margin-top:0; margin-bottom:-38px; z-index:3;
+}
+#categoriesView .cat-main > .bg-arrow-left{margin-left:calc(10px - var(--px));}
+#categoriesView .cat-main > .bg-arrow-right{margin-left:auto; margin-right:calc(10px - var(--px));}
+
+/* 4. Phone layout */
+@media(max-width:640px){
+  #categoriesView .cat-main{--px:16px; --py:16px;}
+
+  .top-bar{flex-wrap:wrap; gap:6px; padding:8px 10px;}
+  .top-logo{height:36px; width:36px; margin-right:0;}
+  .top-wordmark{font-size:.95rem; margin-right:0;}
+  .icon-btn, .grid-btn, .theme-btn{width:32px; height:32px;}
+  .global-save-btn{padding:8px 10px;}
+  .global-save-btn .btn-label{display:none;}
+
+  /* Ibalik ang Search bar: sa ikalawang hilera */
+  .topbar-search{
+    display:block; position:relative; left:auto; top:auto; transform:none;
+    order:99; flex:1 0 100%; width:100%; max-width:none; padding:0;
+    pointer-events:auto;
+  }
+  .search-suggest{left:0; right:0;}
+
+  /* Music popup: nasa loob ng screen */
+  .music-popup{position:fixed; left:12px; right:12px; top:112px; width:auto; max-height:60vh;}
+  .music-popup::before{display:none;}
+
+  /* Itago ang arrows ng background (tinatakpan nila ang mga card) */
+  #categoriesView .cat-main > .bg-arrow{display:none;}
+}
