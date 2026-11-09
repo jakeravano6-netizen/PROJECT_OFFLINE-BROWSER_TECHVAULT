@@ -853,26 +853,22 @@ body{
   position:absolute; inset:0; width:auto; height:auto; min-height:0;
 }
 
-/* 2. Background na hindi napuputol kapag nag-scroll */
-#categoriesView .cat-main{--px:26px; --py:22px;}
+/* 2. Background na nakapirmi (hindi sumasama sa scroll, walang guhit) */
+#categoriesView .cat-shell{position:relative;}
+#categoriesView .cat-main{position:static;}
 #categoriesView .cat-main > .cat-bg{
-  position:sticky; top:0; z-index:0;
-  height:100cqh;
-  margin:calc(-1 * var(--py)) calc(-1 * var(--px)) calc(var(--py) - 100cqh);
+  position:absolute; inset:0; height:auto; margin:0; z-index:0;
 }
 
-/* 3. Mga arrow ng background: nakasunod sa screen, hindi sa scroll */
+/* 3. Mga arrow ng background: nakapirmi sa gitna ng screen */
 #categoriesView .cat-main > .bg-arrow{
-  position:sticky; top:calc(50cqh - 19px); left:auto; right:auto;
-  transform:none; margin-top:0; margin-bottom:-38px; z-index:3;
+  position:absolute; top:50%; transform:translateY(-50%); margin:0; z-index:3;
 }
-#categoriesView .cat-main > .bg-arrow-left{margin-left:calc(10px - var(--px));}
-#categoriesView .cat-main > .bg-arrow-right{margin-left:auto; margin-right:calc(10px - var(--px));}
+#categoriesView .cat-main > .bg-arrow-left{left:10px; right:auto;}
+#categoriesView .cat-main > .bg-arrow-right{right:10px; left:auto;}
 
 /* 4. Phone layout */
 @media(max-width:640px){
-  #categoriesView .cat-main{--px:16px; --py:16px;}
-
   .top-bar{flex-wrap:wrap; gap:6px; padding:8px 10px;}
   .top-logo{height:36px; width:36px; margin-right:0;}
   .top-wordmark{font-size:.95rem; margin-right:0;}
