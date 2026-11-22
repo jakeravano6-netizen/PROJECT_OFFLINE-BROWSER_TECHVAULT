@@ -1632,7 +1632,6 @@
 })();
 
 /* ================= READ ALOUD (Text-to-Speech) =================
-   - Kapag walang pinili: babasahin ang buong lesson.
    I-load pagkatapos ng script.js:  <script src="readaloud.js"></script>
    ================================================================ */
 (function () {
