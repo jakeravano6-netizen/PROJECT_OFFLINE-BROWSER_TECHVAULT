@@ -1173,11 +1173,11 @@
   var INFO = {
     hw: [
       { name: 'Processor (CPU)',     desc: 'The brain of the computer. It carries out instructions and does the calculations.' },
-      { name: 'Memory (RAM)', desc: 'Temporary memory that holds the data and programs currently in use. It is cleared when the power is off.' },
-      { name: 'Cooling Fan',    desc: 'A cooling fan prevents overheating by circulating air and keeping computer components cool.' },
-      { name: 'Motherboard',     desc: 'The main circuit board that connects the CPU, RAM, storage, and all other components.' },
-      { name: 'Power Supply',    desc: 'Converts power from the wall outlet into the voltages the computer parts need.' },
-      { name: 'Storage Drive',   desc: 'Stores your files, programs, and the operating system permanently.' }
+      { name: 'Memory (RAM)',        desc: 'Temporary memory that holds the data and programs currently in use. It is cleared when the power is off.' },
+      { name: 'Cooling Fan',         desc: 'A cooling fan prevents overheating by circulating air and keeping computer components cool.' },
+      { name: 'Motherboard',         desc: 'The main circuit board that connects the CPU, RAM, storage, and all other components.' },
+      { name: 'Power Supply',        desc: 'Converts power from the wall outlet into the voltages the computer parts need.' },
+      { name: 'Storage Drive',       desc: 'Stores your files, programs, and the operating system permanently.' }
     ],
     net: [
       { name: 'Router',               desc: 'Connects your network to the internet and directs data between devices. It also assigns IP addresses to connected devices.' },
@@ -1632,10 +1632,6 @@
 })();
 
 /* ================= READ ALOUD (Text-to-Speech) =================
-   Para sa Microsoft Word, Excel, at PowerPoint lessons.
-   - Ang PDF ay ipinapakita gamit ang PDF.js (may text layer), kaya napipili ang text.
-   - Kapag may pinili (highlight) ang user: ang piniling text lang ang babasahin,
-     at titigil mismo sa dulo ng pinili.
    - Kapag walang pinili: babasahin ang buong lesson.
    I-load pagkatapos ng script.js:  <script src="readaloud.js"></script>
    ================================================================ */
