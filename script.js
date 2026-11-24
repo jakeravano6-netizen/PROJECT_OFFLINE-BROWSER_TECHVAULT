@@ -519,43 +519,7 @@ const VIDEO_LIBRARY = {
 };
 
 const SONG_LIBRARY = [
- {name:'Team Yey', src:'songs/Team Yey.mp3'},
- {name:'ABBA - Dancing Queen (Official Music Video)', src:'songs/ABBA - Dancing Queen (Official Music Video).mp3'},
- {name:'Adie - Oh, Giliw (Official Lyric Video)', src:'songs/Adie - Oh, Giliw (Official Lyric Video).mp3'},
- {name:'Adie - Paraluman (Live Performance)', src:'songs/Adie - Paraluman (Live Performance).mp3'},
-{name:'Angeline Quinto - I Just Fall In Love Again', src:'songs/Angeline Quinto - I Just Fall In Love Again.mp3'},
- {name:'Anne Murray - If I Ever Fall In Love Again (Duet with Kenny Rogers) ft. Kenny Rogers', src:'songs/Anne Murray - If I Ever Fall In Love Again (Duet with Kenny Rogers) ft. Kenny Rogers.mp3'},
- {name:'Arthur Nery - Di Nakakasawa (Official Lyric Video)', src:'songs/Arthur Nery - Di Nakakasawa (Official Lyric Video)'},
- {name:'Arthur Nery - Favorite Vice (Official Lyric Video)', src:'songs/Arthur Nery - Favorite Vice (Official Lyric Video)'},
-{name:'Arthur Nery - Isa Lang (Official Music Video)', src:'songs/Arthur Nery - Isa Lang (Official Music Video)'},
- {name:'Arthur Nery performs "Binhi" LIVE on Wish 107.5 Bus', src:'songs/Arthur Nery performs "Binhi" LIVE on Wish 107.5 Bus.mp3'},
-{name:'Bakit Ba Minamahal Kita - Angeline Quinto  (Music Video)', src:'songs/Bakit Ba Minamahal Kita - Angeline Quinto  (Music Video).mp3'},
-{name:'Ben&Ben - Duyan ｜ Official Lyric Video', src:'songs/Ben&Ben - Duyan ｜ Official Lyric Video.mp3'},
-{name:'Ben&Ben - Leaves (Reimagined)', src:'songs/Ben&Ben - Leaves (Reimagined).mp3'},
-{name:'Ben&Ben - Lifetime (Reimagined) - A Performance Video', src:'songs/Ben&Ben - Lifetime (Reimagined) - A Performance Video.mp3'},
- {name:'Billie Eilish - BIRDS OF A FEATHER', src:'songs/Billie Eilish - BIRDS OF A FEATHER.mp3'},
- {name:'Bruno Mars - Just The Way You Are (Official Music Video)', src:'songs/Bruno Mars - Just The Way You Are (Official Music Video).mp3'},
- {name:'Bruno Mars - Risk It All [Official Music Video]', src:'songs/Bruno Mars - Risk It All [Official Music Video].mp3'},
-{name:'Bruno Mars - Talking To The Moon (Official Lyric Video)', src:'songs/Bruno Mars - Talking To The Moon (Official Lyric Video).mp3'},
-{name:'Celine Dion - I Love You (from the Original performance) (Official Video)', src:'songs/Celine Dion - I Love You (from the Original performance) (Official Video).mp3'},
-{name:'Co-Pilot - Just Hush  (featuring J.O.L.O. & Rjay Ty) [Official Lyric Video]', src:'songs/Co-Pilot - Just Hush  (featuring J.O.L.O. & Rjay Ty) [Official Lyric Video]'},
-{name:'December Avenue - Bulong (OFFICIAL MUSIC VIDEO)', src:'songs/December Avenue - Bulong (OFFICIAL MUSIC VIDEO)',},
-{name:'December Avenue - Eroplanong Papel Lyric Video (Official)', src:'songs/December Avenue - Eroplanong Papel Lyric Video (Official).mp3'},
-{name:'Dionela - Marilag (Lyrics)', src:'songs/Dionela - Marilag (Lyrics)'},
-{name:'Dionela - Oksihina (Lyrics)', src:'songs/Dionela - Oksihina (Lyrics).mp3'},
-{name:'Ed Sheeran - Photograph (Lyrics)', src:'songs/Ed Sheeran - Photograph (Lyrics).mp3'},
-{name:'Eraserheads - Ligaya [Lyric Video]', src:'songs/Eraserheads - Ligaya [Lyric Video].mp3'},
-{name:'Eric Clapton - Wonderful Tonight [Official Live]', src:'songs/Eric Clapton - Wonderful Tonight [Official Live].mp3'},
-{name:'IV Of Spades - Kabisado (Lyrics)', src:'songs/IV Of Spades - Kabisado (Lyrics).mp3'},
-{name:'Jolianne, Arthur Nery – Palayo Sa Mundo (Official Lyric Video)', src:'songs/Jolianne, Arthur Nery – Palayo Sa Mundo (Official Lyric Video).mp3'},
-{name:'Jona - Maghihintay Ako (Official Recording Session with Lyrics)', src:'songs/Jona - Maghihintay Ako (Official Recording Session with Lyrics).mp3'},
-{name:'Justin Bieber - That Should Be Me', src:'songs/Justin Bieber - That Should Be Me.mp3'},
-{name:'Katy Perry - Unconditionally (Official)', src:'songs/Katy Perry - Unconditionally (Official).mp3'},
-{name:'Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)', src:'songs/Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video).mp3'},
-{name:'Lil Eddie - Statue (Lyrics)', src:'songs/Lil Eddie - Statue (Lyrics).mp3'},
-{name:'Maki - Kailan？ (Official Lyric Video)', src:'songs/Maki - Kailan？ (Official Lyric Video).mp3'},
-{name:''}
-
+ 
 ];
 
 const sharedVideos = {};
