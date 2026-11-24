@@ -496,7 +496,10 @@
   .about-item h4{margin:0 0 6px; font-size:.95rem;}
   .about-item p{margin:0; font-size:.85rem; color:var(--ink-soft); line-height:1.5;}
 
-  input[type=file]{display:none;}
+  /* Itago lang ang dalawang nakatagong input sa index.html.
+     Dati: input[type=file]{display:none;} — itinatago nito pati ang file picker
+     sa Add song form, kaya hindi makapili ng file ang admin. */
+  #videoInput, #songInput{display:none;}
 
   @media(max-width:640px){
     .cat-shell{flex-direction:column;}
