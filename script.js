@@ -1797,10 +1797,36 @@ logInAs('Guest');
   }
 
   if (!synth || typeof SpeechSynthesisUtterance === 'undefined') {
-    bar.innerHTML = '<span class="ra-note">Hindi supported ang Read Aloud sa browser na ito.</span>';
-    new MutationObserver(function () {
-      bar.classList.toggle('show', !!OFFICE[grid.getAttribute('data-section')]);
-    }).observe(grid, { attributes: true, attributeFilter: ['data-section'] });
+    var inApp = /FBAN|FBAV|FB_IAB|Messenger|Instagram|Line\/|Snapchat|TikTok/i.test(navigator.userAgent);
+    var isAndroid = /Android/i.test(navigator.userAgent);
+    var pageUrl = location.href;
+    var chromeIntent = 'intent://' + location.host + location.pathname + location.search +
+      '#Intent;scheme=' + location.protocol.replace(':', '') + ';package=com.android.chrome;end';
+    bar.innerHTML =
+      '<span class="ra-note" style="flex:1;min-width:200px;">' +
+      (inApp
+        ? 'Hindi gumagana ang Read Aloud sa loob ng Messenger/Facebook browser. Buksan ang link sa Chrome o Safari.'
+        : 'Hindi supported ang Read Aloud sa browser na ito. Subukan ang Chrome, Edge o Safari.') +
+      '</span>' +
+      (isAndroid && inApp ? '<a class="ra-btn ra-main" style="text-decoration:none;" href="' + chromeIntent + '">Open in Chrome</a>' : '') +
+      '<button type="button" class="ra-btn" id="raCopyLink">Copy link</button>';
+    var copyBtn = document.getElementById('raCopyLink');
+    if (copyBtn) copyBtn.addEventListener('click', function () {
+      function done() { if (typeof showToast === 'function') showToast('Na-copy ang link'); }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pageUrl).then(done, function () { window.prompt('Copy this link:', pageUrl); });
+      } else { window.prompt('Copy this link:', pageUrl); }
+    });
+    // Kahit walang speech, dapat lumabas pa rin ang PDF sa lahat ng device
+    function mountAll() {
+      var on = !!OFFICE[grid.getAttribute('data-section')];
+      bar.classList.toggle('show', on);
+      if (!on) return;
+      var slots = grid.querySelectorAll('.pdf-slot');
+      for (var i = 0; i < slots.length; i++) mountViewer(slots[i]);
+    }
+    new MutationObserver(mountAll).observe(grid, { childList: true, attributes: true, attributeFilter: ['data-section'] });
+    mountAll();
     return;
   }
 
@@ -2006,6 +2032,12 @@ logInAs('Guest');
       note.style.padding = '6px 2px';
       note.textContent = why + ' (Hindi gagana ang piliin-at-basahin hangga\'t hindi ito naaayos.)';
       ifr.parentNode.insertBefore(note, ifr);
+      var openLink = document.createElement('a');
+      openLink.href = url; openLink.target = '_blank'; openLink.rel = 'noopener';
+      openLink.className = 'pdf-open';
+      openLink.style.cssText = 'display:inline-block;margin:0 0 8px 2px;';
+      openLink.textContent = 'Buksan ang PDF';
+      ifr.parentNode.insertBefore(openLink, ifr);
     });
   }
 
