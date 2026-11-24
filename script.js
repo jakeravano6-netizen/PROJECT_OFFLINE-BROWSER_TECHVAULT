@@ -1,1151 +1,1275 @@
-/* ================= AUTH ================= */
-  const accounts = [];              // {username, password}
-  const userStore = {};             // username -> {favorites, bio, searchHistory, feedback, activity}
-  let currentUser = null;
+const accounts = [];
+const userStore = {};
+let currentUser = null;
 
-  const DEV_USERNAME = 'jake';
-  function isDev(){ return !!currentUser && currentUser.toLowerCase() === DEV_USERNAME; }
+const DEV_USERNAME = 'jake';
+function isDev(){ return !!currentUser && currentUser.toLowerCase() === DEV_USERNAME; }
 
-  function ensureUserData(username){
-    if(!userStore[username]){
-      userStore[username] = { favorites:new Set(['iphone','ipad','mac']), bio:'', searchHistory:[], feedback:[], activity:[], videoProgress:{} };
-    }
-    return userStore[username];
+function ensureUserData(username){
+  if(!userStore[username]){
+    userStore[username] = { favorites:new Set(['iphone','ipad','mac']), bio:'', searchHistory:[], feedback:[], activity:[], videoProgress:{} };
+    restoreUserData(username);
   }
-  function getUserData(){ return userStore[currentUser]; }
+  return userStore[username];
+}
+function getUserData(){ return userStore[currentUser]; }
 
-  // Recent-activity log
-  function pushActivity(type, name, id){
+function persistUserData(){
+  try{
     const ud = getUserData();
-    if(!ud.activity) ud.activity = [];
-    ud.activity = ud.activity.filter(a => !(a.type === type && a.name === name));
-    ud.activity.unshift({ type, name, id, ts: Date.now() });
-    if(ud.activity.length > 30) ud.activity.length = 30;
-  }
+    if(!ud) return;
+    localStorage.setItem('techvault_' + currentUser, JSON.stringify({ activity: ud.activity || [], videoProgress: ud.videoProgress || {} }));
+  }catch(e){}
+}
+function restoreUserData(username){
+  try{
+    const raw = localStorage.getItem('techvault_' + username);
+    if(!raw) return;
+    const d = JSON.parse(raw);
+    const ud = userStore[username];
+    if(Array.isArray(d.activity)) ud.activity = d.activity;
+    if(d.videoProgress) ud.videoProgress = d.videoProgress;
+  }catch(e){}
+}
 
-  /* Per-video watch progress */
-  function progressKey(leafId, url){ return leafId + '::' + url; }
-  function saveVideoProgress(key, time, duration){
-    const ud = getUserData();
-    if(!ud.videoProgress) ud.videoProgress = {};
-    ud.videoProgress[key] = { time, duration };
-  }
-  function getVideoProgress(key){
-    const ud = getUserData();
-    return (ud.videoProgress && ud.videoProgress[key]) || null;
-  }
+function pushActivity(type, name, id){
+  const ud = getUserData();
+  if(!ud.activity) ud.activity = [];
+  ud.activity = ud.activity.filter(a => !(a.type === type && a.name === name));
+  ud.activity.unshift({ type, name, id, ts: Date.now() });
+  if(ud.activity.length > 30) ud.activity.length = 30;
+  persistUserData();
+}
 
-  function logInAs(u){
-    currentUser = u;
-    ensureUserData(u);
-    document.getElementById('topBar').style.display = 'flex';
-    renderDevicePanel();
-    showCategories();
-  }
-  function logOff(){
-    currentUser = null;
-    document.getElementById('devicePanel').classList.remove('open');
-    logInAs('Guest');
-  }
+function progressKey(leafId, url){ return leafId + '::' + url; }
+function saveVideoProgress(key, time, duration){
+  const ud = getUserData();
+  if(!ud.videoProgress) ud.videoProgress = {};
+  ud.videoProgress[key] = { time, duration, ts: Date.now() };
+  persistUserData();
+}
+function getVideoProgress(key){
+  const ud = getUserData();
+  return (ud.videoProgress && ud.videoProgress[key]) || null;
+}
 
-  /* ================= DEVICE PICKER ================= */
-  const devices = [
-    { id:'web', name:'Normal Screen', icon:'<rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M8 20h8M12 17v3"/>' },
-    { id:'iphone', name:'iPhone', icon:'<rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M10.5 5h3"/>' },
-    { id:'android', name:'Android', icon:'<rect x="7" y="2" width="10" height="20" rx="2"/><circle cx="9.2" cy="4.4" r=".6" fill="currentColor" stroke="none"/><circle cx="14.8" cy="4.4" r=".6" fill="currentColor" stroke="none"/>' },
-    { id:'ipad', name:'iPad', icon:'<rect x="5" y="3" width="14" height="18" rx="2"/>' },
-    { id:'mac', name:'Mac', icon:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8"/>' },
-    { id:'windows', name:'Windows', icon:'<rect x="3" y="3" width="7.5" height="7.5"/><rect x="13.5" y="3" width="7.5" height="7.5"/><rect x="3" y="13.5" width="7.5" height="7.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5"/>' },
-    { id:'vision', name:'Vision', icon:'<path d="M2 12c0-3 2.5-4.5 5-4.5s4 1.2 5 2.4c1-1.2 2.5-2.4 5-2.4s5 1.5 5 4.5-2.5 4.5-5 4.5c-2.5 0-4-1.2-5-2.4-1 1.2-2.5 2.4-5 2.4S2 15 2 12z"/>' },
-    { id:'watch', name:'Watch', icon:'<rect x="7" y="6" width="10" height="12" rx="4"/><path d="M9 3h6M9 21h6"/>' },
-    { id:'tv', name:'TV', icon:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>' },
-  ];
-  let currentDevice = 'web';
-  const deviceTrigger = document.getElementById('deviceTrigger');
-  const devicePanel = document.getElementById('devicePanel');
-  const deviceFrame = document.getElementById('deviceFrame');
-  const stage = document.getElementById('stage');
+let players = [];
+let autoResume = false;
 
-  let dpEditing = false;
-  let dpDraftFavs = null;
-
-  function dpItemHTML(d, isFav){
-    const star = dpEditing ? `<span class="dp-star ${isFav?'active':''}" data-star="${d.id}">&#9733;</span>` : '';
-    return `<div class="dp-item" data-id="${d.id}">
-      <span class="dp-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d.icon}</svg></span>
-      <span class="dp-label">${d.name}</span>
-      ${star}
-    </div>`;
-  }
-  function renderDevicePanel(){
-    if(!currentUser) return;
-    const ud = getUserData();
-    const favSet = dpEditing ? dpDraftFavs : ud.favorites;
-    const favItems = devices.filter(d => favSet.has(d.id));
-    const otherItems = devices.filter(d => !favSet.has(d.id));
-
-    document.getElementById('dpFavGrid').innerHTML = favItems.map(d=>dpItemHTML(d,true)).join('') || `<p style="grid-column:1/-1; font-size:.76rem; color:var(--ink-soft); margin:0;">No favorites yet — tap the pencil to add some.</p>`;
-    document.getElementById('dpMoreGrid').innerHTML = otherItems.map(d=>dpItemHTML(d,false)).join('') || `<p style="grid-column:1/-1; font-size:.76rem; color:var(--ink-soft); margin:0;">Everything's in your favorites.</p>`;
-    document.getElementById('dpSaveBtn').style.display = dpEditing ? 'flex' : 'none';
-    document.getElementById('dpEditBtn').style.display = dpEditing ? 'none' : 'flex';
-
-    devicePanel.querySelectorAll('.dp-item[data-id]').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        const id = el.dataset.id;
-        if(dpEditing){
-          if(dpDraftFavs.has(id)) dpDraftFavs.delete(id); else dpDraftFavs.add(id);
-          renderDevicePanel();
-        } else {
-          setDevice(id);
-        }
-      });
-    });
-  }
-  document.getElementById('dpEditBtn').addEventListener('click', ()=>{
-    dpEditing = true;
-    dpDraftFavs = new Set(getUserData().favorites);
-    renderDevicePanel();
+function formatTime(s){
+  s = Math.max(0, Math.floor(s || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  const rr = (r < 10 ? '0' : '') + r;
+  if(h) return h + ':' + (m < 10 ? '0' : '') + m + ':' + rr;
+  return m + ':' + rr;
+}
+function embedProgressKey(leafId, embed, i){
+  return progressKey(leafId, 'yt:' + youtubeIdFromEmbed(embed) + ':' + i);
+}
+function bestEmbedProgress(leafId){
+  const vids = sharedVideos[leafId] || [];
+  let best = null;
+  vids.forEach((v, i)=>{
+    if(!v.embed) return;
+    const p = getVideoProgress(embedProgressKey(leafId, v.embed, i));
+    if(p && p.time > 0 && (!best || (p.ts || 0) > (best.ts || 0))) best = p;
   });
-  function showToast(msg){
-    const t = document.getElementById('saveToast');
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(showToast._h);
-    showToast._h = setTimeout(()=> t.classList.remove('show'), 1800);
-  }
-  document.getElementById('dpSaveBtn').addEventListener('click', ()=>{
+  return best;
+}
+
+let ytCallbacks = [];
+let ytLoading = false;
+function whenYouTubeReady(cb){
+  if(window.YT && window.YT.Player){ cb(); return; }
+  ytCallbacks.push(cb);
+  if(ytLoading) return;
+  ytLoading = true;
+  const prev = window.onYouTubeIframeAPIReady;
+  window.onYouTubeIframeAPIReady = function(){
+    if(typeof prev === 'function'){ try{ prev(); }catch(e){} }
+    ytCallbacks.splice(0).forEach(f => f());
+  };
+  const s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+}
+
+function saveWatchProgress(rec, ended){
+  // skip until the video has actually played so saved progress is not overwritten
+  if(!rec.touched) return;
+  try{
+    const d = rec.player.getDuration();
+    if(!d) return;
+    const t = ended ? d : rec.player.getCurrentTime();
+    saveVideoProgress(rec.key, t, d);
+  }catch(e){}
+}
+function saveAllWatchProgress(){
+  players.forEach(r => { if(r.iframe.isConnected) saveWatchProgress(r, false); });
+}
+setInterval(()=>{
+  players = players.filter(r => r.iframe.isConnected);
+  players.forEach(r => { if(r.playing) saveWatchProgress(r, false); });
+}, 2000);
+
+function attachPlayer(iframe, key){
+  whenYouTubeReady(()=>{
+    if(!iframe.isConnected) return;
+    const rec = { player:null, iframe, key, playing:false, touched:false };
+    rec.player = new YT.Player(iframe, {
+      events:{
+        onStateChange:(e)=>{
+          rec.playing = (e.data === 1);
+          if(e.data === 1) rec.touched = true;
+          if(e.data === 1 || e.data === 2 || e.data === 0) saveWatchProgress(rec, e.data === 0);
+        }
+      }
+    });
+    players.push(rec);
+  });
+}
+function prepareEmbed(embed, leafId, i){
+  const prog = getVideoProgress(embedProgressKey(leafId, embed, i));
+  let start = 0;
+  if(prog && prog.time > 2 && (!prog.duration || prog.time < prog.duration - 3)) start = Math.floor(prog.time);
+  return embed.replace(/src="([^"]+)"/, (m, src)=>{
+    let u;
+    try{ u = new URL(src, location.href); }catch(e){ return m; }
+    u.searchParams.set('enablejsapi', '1');
+    if(/^https?:$/.test(location.protocol)) u.searchParams.set('origin', location.origin);
+    if(start){
+      u.searchParams.set('start', start);
+      if(autoResume){ u.searchParams.set('autoplay', '1'); autoResume = false; }
+    }
+    return 'src="' + u.toString() + '"';
+  });
+}
+function attachEmbedPlayers(leafId){
+  const list = sharedVideos[leafId] || [];
+  videoGrid.querySelectorAll('.slot:not(.pdf-slot)').forEach((slot, i)=>{
+    const v = list[i];
+    const iframe = slot.querySelector('iframe');
+    if(!iframe || !v || !v.embed) return;
+    attachPlayer(iframe, embedProgressKey(leafId, v.embed, i));
+  });
+}
+
+function logInAs(u){
+  currentUser = u;
+  ensureUserData(u);
+  document.getElementById('topBar').style.display = 'flex';
+  renderDevicePanel();
+  showCategories();
+}
+function logOff(){
+  currentUser = null;
+  document.getElementById('devicePanel').classList.remove('open');
+  logInAs('Guest');
+}
+
+const devices = [
+  { id:'web', name:'Normal Screen', icon:'<rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M8 20h8M12 17v3"/>' },
+  { id:'iphone', name:'iPhone', icon:'<rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M10.5 5h3"/>' },
+  { id:'android', name:'Android', icon:'<rect x="7" y="2" width="10" height="20" rx="2"/><circle cx="9.2" cy="4.4" r=".6" fill="currentColor" stroke="none"/><circle cx="14.8" cy="4.4" r=".6" fill="currentColor" stroke="none"/>' },
+  { id:'ipad', name:'iPad', icon:'<rect x="5" y="3" width="14" height="18" rx="2"/>' },
+  { id:'mac', name:'Mac', icon:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8"/>' },
+  { id:'windows', name:'Windows', icon:'<rect x="3" y="3" width="7.5" height="7.5"/><rect x="13.5" y="3" width="7.5" height="7.5"/><rect x="3" y="13.5" width="7.5" height="7.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5"/>' },
+  { id:'vision', name:'Vision', icon:'<path d="M2 12c0-3 2.5-4.5 5-4.5s4 1.2 5 2.4c1-1.2 2.5-2.4 5-2.4s5 1.5 5 4.5-2.5 4.5-5 4.5c-2.5 0-4-1.2-5-2.4-1 1.2-2.5 2.4-5 2.4S2 15 2 12z"/>' },
+  { id:'watch', name:'Watch', icon:'<rect x="7" y="6" width="10" height="12" rx="4"/><path d="M9 3h6M9 21h6"/>' },
+  { id:'tv', name:'TV', icon:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>' },
+];
+let currentDevice = 'web';
+const deviceTrigger = document.getElementById('deviceTrigger');
+const devicePanel = document.getElementById('devicePanel');
+const deviceFrame = document.getElementById('deviceFrame');
+const stage = document.getElementById('stage');
+
+let dpEditing = false;
+let dpDraftFavs = null;
+
+function dpItemHTML(d, isFav){
+  const star = dpEditing ? `<span class="dp-star ${isFav?'active':''}" data-star="${d.id}">&#9733;</span>` : '';
+  return `<div class="dp-item" data-id="${d.id}">
+    <span class="dp-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d.icon}</svg></span>
+    <span class="dp-label">${d.name}</span>
+    ${star}
+  </div>`;
+}
+function renderDevicePanel(){
+  if(!currentUser) return;
+  const ud = getUserData();
+  const favSet = dpEditing ? dpDraftFavs : ud.favorites;
+  const favItems = devices.filter(d => favSet.has(d.id));
+  const otherItems = devices.filter(d => !favSet.has(d.id));
+
+  document.getElementById('dpFavGrid').innerHTML = favItems.map(d=>dpItemHTML(d,true)).join('') || `<p style="grid-column:1/-1; font-size:.76rem; color:var(--ink-soft); margin:0;">No favorites yet — tap the pencil to add some.</p>`;
+  document.getElementById('dpMoreGrid').innerHTML = otherItems.map(d=>dpItemHTML(d,false)).join('') || `<p style="grid-column:1/-1; font-size:.76rem; color:var(--ink-soft); margin:0;">Everything's in your favorites.</p>`;
+  document.getElementById('dpSaveBtn').style.display = dpEditing ? 'flex' : 'none';
+  document.getElementById('dpEditBtn').style.display = dpEditing ? 'none' : 'flex';
+
+  devicePanel.querySelectorAll('.dp-item[data-id]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const id = el.dataset.id;
+      if(dpEditing){
+        if(dpDraftFavs.has(id)) dpDraftFavs.delete(id); else dpDraftFavs.add(id);
+        renderDevicePanel();
+      } else {
+        setDevice(id);
+      }
+    });
+  });
+}
+document.getElementById('dpEditBtn').addEventListener('click', ()=>{
+  dpEditing = true;
+  dpDraftFavs = new Set(getUserData().favorites);
+  renderDevicePanel();
+});
+function showToast(msg){
+  const t = document.getElementById('saveToast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=> t.classList.remove('show'), 1800);
+}
+document.getElementById('dpSaveBtn').addEventListener('click', ()=>{
+  getUserData().favorites = new Set(dpDraftFavs);
+  dpEditing = false;
+  renderDevicePanel();
+  showToast('Favorites saved');
+});
+
+const musicPopup = document.getElementById('musicPopup');
+const globalSaveBtn = document.getElementById('globalSaveBtn');
+
+function openMusicPopup(){
+  musicPopup.classList.add('open');
+  renderSongList();
+}
+function closeMusicPopup(){
+  musicPopup.classList.remove('open');
+}
+function toggleMusicPopup(){
+  musicPopup.classList.contains('open') ? closeMusicPopup() : openMusicPopup();
+}
+
+globalSaveBtn.addEventListener('click', (e)=>{
+  e.stopPropagation();
+  if(dpEditing){
     getUserData().favorites = new Set(dpDraftFavs);
     dpEditing = false;
     renderDevicePanel();
-    showToast('Favorites saved');
-  });
-
-  /* ================= MUSIC POPUP ================= */
-  const musicPopup = document.getElementById('musicPopup');
-  const globalSaveBtn = document.getElementById('globalSaveBtn');
-
-  function openMusicPopup(){
-    musicPopup.classList.add('open');
-    renderSongList();
   }
-  function closeMusicPopup(){
-    musicPopup.classList.remove('open');
-  }
-  function toggleMusicPopup(){
-    musicPopup.classList.contains('open') ? closeMusicPopup() : openMusicPopup();
-  }
+  devicePanel.classList.remove('open');
+  toggleMusicPopup();
+});
 
-  globalSaveBtn.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    if(dpEditing){
-      getUserData().favorites = new Set(dpDraftFavs);
-      dpEditing = false;
-      renderDevicePanel();
-    }
-    devicePanel.classList.remove('open');
-    toggleMusicPopup();
+function setDevice(id){
+  currentDevice = id;
+  deviceFrame.setAttribute('data-device', id);
+  stage.classList.toggle('framed', id !== 'web');
+}
+document.getElementById('deviceReset').addEventListener('click', ()=> setDevice('web'));
+deviceTrigger.addEventListener('click', (e)=>{
+  e.stopPropagation();
+  closeMusicPopup();
+  devicePanel.classList.toggle('open');
+});
+document.addEventListener('click', (e)=>{
+  if(!devicePanel.contains(e.target) && !deviceTrigger.contains(e.target)) devicePanel.classList.remove('open');
+  if(!musicPopup.contains(e.target) && !globalSaveBtn.contains(e.target)) closeMusicPopup();
+});
+renderDevicePanel();
+
+document.getElementById('darkThemeSwitch').addEventListener('change', e=>{
+  document.body.style.filter = e.target.checked ? 'invert(1) hue-rotate(180deg)' : 'none';
+});
+
+const sidebar = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+function openSidebar(){ sidebar.classList.add('open'); sidebarBackdrop.classList.add('show'); }
+function closeSidebar(){ sidebar.classList.remove('open'); sidebarBackdrop.classList.remove('show'); }
+function toggleSidebar(){ sidebar.classList.contains('open') ? closeSidebar() : openSidebar(); }
+hamburgerBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleSidebar(); });
+sidebarBackdrop.addEventListener('click', closeSidebar);
+window.addEventListener('resize', ()=> updateFeedArrows());
+
+let lastMainView = 'categoriesView';
+
+function stopAllVideos(){
+  document.querySelectorAll('#videoGrid video').forEach(v => { if(!v.paused) v.pause(); });
+}
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ stopAllVideos(); saveAllWatchProgress(); }
+});
+window.addEventListener('pagehide', saveAllWatchProgress);
+
+function stopEmbeds(){
+  saveAllWatchProgress();
+  document.querySelectorAll('#videoGrid .slot:not(.pdf-slot) iframe').forEach(f => {
+    try { f.src = 'about:blank'; } catch(e){}
   });
+  players = [];
+}
 
-  function setDevice(id){
-    currentDevice = id;
-    deviceFrame.setAttribute('data-device', id);
-    stage.classList.toggle('framed', id !== 'web');
+function showView(id){
+  if(id !== 'detailView'){ stopAllVideos(); stopEmbeds(); }
+  if(id === 'categoriesView' || id === 'sectionView') returnStack = [];
+  if(id !== 'detailView' && expandedSections.size){
+    expandedSections.clear();
+    renderSidebar();
   }
-  document.getElementById('deviceReset').addEventListener('click', ()=> setDevice('web'));
-  deviceTrigger.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    closeMusicPopup();
-    devicePanel.classList.toggle('open');
-  });
-  document.addEventListener('click', (e)=>{
-    if(!devicePanel.contains(e.target) && !deviceTrigger.contains(e.target)) devicePanel.classList.remove('open');
-    if(!musicPopup.contains(e.target) && !globalSaveBtn.contains(e.target)) closeMusicPopup();
-  });
-  renderDevicePanel();
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
+  if(id === 'categoriesView') lastMainView = id;
+}
 
-  /* ================= THEME ================= */
-  document.getElementById('darkThemeSwitch').addEventListener('change', e=>{
-    document.body.style.filter = e.target.checked ? 'invert(1) hue-rotate(180deg)' : 'none';
-  });
-
-  /* ================= SIDEBAR DRAWER ================= */
-  const sidebar = document.getElementById('sidebar');
-  const sidebarBackdrop = document.getElementById('sidebarBackdrop');
-  const hamburgerBtn = document.getElementById('hamburgerBtn');
-  function openSidebar(){ sidebar.classList.add('open'); sidebarBackdrop.classList.add('show'); }
-  function closeSidebar(){ sidebar.classList.remove('open'); sidebarBackdrop.classList.remove('show'); }
-  function toggleSidebar(){ sidebar.classList.contains('open') ? closeSidebar() : openSidebar(); }
-  hamburgerBtn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleSidebar(); });
-  sidebarBackdrop.addEventListener('click', closeSidebar);
-  window.addEventListener('resize', ()=> updateFeedArrows());
-
-  /* ================= VIEW SWITCHING ================= */
-  let lastMainView = 'categoriesView';
-
-  function stopAllVideos(){
-    document.querySelectorAll('#videoGrid video').forEach(v => { if(!v.paused) v.pause(); });
-  }
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.hidden) stopAllVideos();
-  });
-
-  function showView(id){
-    if(id !== 'detailView') stopAllVideos();
-    if(id === 'categoriesView' || id === 'sectionView') returnStack = [];
-    // Kapag umalis sa lesson page, i-collapse ulit ang lahat ng section sa sidebar
-    if(id !== 'detailView' && expandedSections.size){
-      expandedSections.clear();
-      renderSidebar();
-    }
-    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
-    if(id === 'categoriesView') lastMainView = id;
-  }
-
-  /* ================= CATEGORIES DATA ================= */
-  const SECTIONS = [
-    { id:'hw', name:'Hardware', eyebrow:'Hands-on Fixes', grad:'linear-gradient(135deg,#4B5B6B,#1F2933)',
-      img:'assets/01_Hardware.png',
-      icon:'<path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/><rect x="7" y="7" width="10" height="10" rx="1.5"/>',
-      items:[
-        {id:'hw-01', code:'HW-01', name:'System Unit Assembly'},
-        {id:'hw-02', code:'HW-02', name:'System Unit Disassembly'},
-        {id:'hw-03', code:'HW-03', name:'Function of Motherboard'},
-        {id:'hw-04', code:'HW-04', name:'Parts of System Unit'},
+const SECTIONS = [
+  { id:'hw', name:'Hardware', eyebrow:'Hands-on Fixes', grad:'linear-gradient(135deg,#4B5B6B,#1F2933)',
+    img:'assets/01_Hardware.png',
+    icon:'<path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/><rect x="7" y="7" width="10" height="10" rx="1.5"/>',
+    items:[
+      {id:'hw-01', code:'HW-01', name:'System Unit Assembly'},
+      {id:'hw-02', code:'HW-02', name:'System Unit Disassembly'},
+      {id:'hw-03', code:'HW-03', name:'Function of Motherboard'},
+      {id:'hw-04', code:'HW-04', name:'Parts of System Unit'},
+    ]},
+  { id:'net', name:'Networking', eyebrow:'Get Back Online', grad:'linear-gradient(135deg,#12B3A8,#0A5C56)',
+    img:'assets/02_Networking.png',
+    icon:'<path d="M12 20h.01M8.5 16.5a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 14 0M2 8.5a15 15 0 0 1 20 0"/>',
+    items:[
+      {id:'net-01', code:'NET-01', name:'Creating a Straight-Through Cable'},
+      {id:'net-02', code:'NET-02', name:'Creating a Crossover Cable'},
+      {id:'net-03', code:'NET-03', name:'RJ45 Crimping'},
+      {id:'net-06', code:'NET-06', name:'Router Configuration'},
+      {id:'net-07', code:'NET-07', name:'IP Address Configuration'},
+      {id:'net-08', code:'NET-08', name:'Basic Network Troubleshooting'},
+    ]},
+  { id:'sw', name:'Software', eyebrow:'App Fixes', grad:'linear-gradient(135deg,#4F46E5,#241C7A)',
+    img:'assets/03_Software.png',
+    icon:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    items:[
+      {id:'sw-01', code:'SW-01', name:'Windows Installation'},
+      {id:'sw-02', code:'SW-02', name:'Creating a Bootable USB'},
+      {id:'sw-03', code:'SW-03', name:'Software Installation'},
+      {id:'sw-04', code:'SW-04', name:'Driver Installation'},
+      {id:'sw-05', code:'SW-05', name:'Antivirus Installation'},
+      {id:'sw-06', code:'SW-06', name:'Basic Windows Troubleshooting'},
+    ]},
+  { id:'prog', name:'Programming', eyebrow:'Code It Up', grad:'linear-gradient(135deg,#FF9142,#B85A12)',
+    img:'assets/04_Programming.png',
+    icon:'<path d="m8 9-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/>',
+    items:[
+      {id:'prog-01', code:'PROG-01', name:'HTML Basics'},
+      {id:'prog-02', code:'PROG-02', name:'CSS Basics'},
+      {id:'prog-03', code:'PROG-03', name:'JavaScript Basics'},
+      {id:'prog-04', code:'PROG-04', name:'Creating a Simple Website'},
+      {id:'prog-05', code:'PROG-05', name:'Basic Programming Concepts'},
+    ]},
+  { id:'maint', name:'IT Maintenance & Safety', eyebrow:'Stay Protected', grad:'linear-gradient(135deg,#E1435A,#7A1424)',
+    img:'assets/05_IT_Maintenance_Safety.png',
+    icon:'<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>',
+    items:[
+      {id:'maint-01', code:'MAINT-01', name:'Preventive Computer Maintenance'},
+      {id:'maint-02', code:'MAINT-02', name:'Proper Cable Management'},
+      {id:'maint-03', code:'MAINT-03', name:'ESD Safety'},
+      {id:'maint-05', code:'MAINT-05', name:'Data Backup'},
+      {id:'maint-06', code:'MAINT-06', name:'Basic Troubleshooting Steps'},
+      {id:'maint-07', code:'MAINT-07', name:'Occupational Health and Safety'},
+      {id:'maint-08', code:'MAINT-08', name:'5s'},
+    ]},
+  { id:'word', name:'Microsoft Word', short:'Word', group:'office',
+    cardName:'Microsoft Office Tools', cardEyebrow:'Office Skills', eyebrow:'Office Skills', grad:'linear-gradient(135deg,#2B7CD3,#123C78)',
+    img:'assets/06_MS_Word.svg',
+    flip:true,
+    noVideos:true,
+    pdf:'pdf/MS_Word_for_Beginners.pdf',
+    pdfTitle:'Microsoft Word for Beginners',
+    pdfMeta:'1.5 hours • 10 lessons',
+    tips:[
+      ['Ctrl + S','Save'],
+      ['F12','Save As'],
+      ['Ctrl + Z','Undo'],
+      ['Ctrl + C / X / V','Copy / Cut / Paste'],
+      ['Ctrl + B / I / U','Bold / Italic / Underline'],
+      ['Ctrl + P','Print'],
+    ],
+    icon:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13l1.5 5 2.5-5 2.5 5L16 13"/>',
+    items:[
+      {id:'word-01', code:'WORD-01', name:'Navigating with the Keyboard', page:3},
+      {id:'word-02', code:'WORD-02', name:'Navigating with the Mouse and Zoom Slider', page:4},
+      {id:'word-03', code:'WORD-03', name:'Common Shortcut Keys', page:5},
+      {id:'word-04', code:'WORD-04', name:'Saving a Document', page:7},
+      {id:'word-05', code:'WORD-05', name:'Closing a Document', page:8},
+      {id:'word-06', code:'WORD-06', name:'Undo, Redo and Repeat', page:8},
+      {id:'word-07', code:'WORD-07', name:'Cut, Copy and Paste', page:9},
+      {id:'word-08', code:'WORD-08', name:'Format Font', page:10},
+      {id:'word-09', code:'WORD-09', name:'Formatting Paragraphs', page:12},
+      {id:'word-10', code:'WORD-10', name:'Spelling and Grammar', page:15},
+    ]},
+  { id:'excel', name:'Microsoft Excel', short:'Excel', group:'office', hidden:true,
+    eyebrow:'Office Skills', grad:'linear-gradient(135deg,#21A366,#0B5D36)',
+    img:'assets/06_MS_Word.svg',
+    noVideos:true,
+    pdf:'pdf/MS_Excel_for_Beginners.pdf',
+    pdfTitle:'Microsoft Excel for Beginners',
+    icon:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+    items:[
+      {id:'excel-01', code:'EXCEL-01', name:'Excel Interface and Basics', tables:[
+        {title:'Workbook & File', rows:[['Ctrl + N','New workbook'],['Ctrl + O','Open'],['Ctrl + S','Save'],['F12','Save As'],['Ctrl + P','Print'],['Ctrl + W','Close workbook']]},
+        {title:'Navigation', rows:[['Ctrl + Arrow','Jump to edge of data region'],['Ctrl + Home','Go to A1 (top-left)'],['Ctrl + End','Go to last used cell'],['Page Up / Page Down','Move one screen up/down'],['Alt + Page Up / Down','Move one screen left/right'],['Ctrl + G or F5','Go To dialog']]}
       ]},
-    { id:'net', name:'Networking', eyebrow:'Get Back Online', grad:'linear-gradient(135deg,#12B3A8,#0A5C56)',
-      img:'assets/02_Networking.png',
-      icon:'<path d="M12 20h.01M8.5 16.5a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 14 0M2 8.5a15 15 0 0 1 20 0"/>',
-      items:[
-        {id:'net-01', code:'NET-01', name:'Creating a Straight-Through Cable'},
-        {id:'net-02', code:'NET-02', name:'Creating a Crossover Cable'},
-        {id:'net-03', code:'NET-03', name:'RJ45 Crimping'},
-        {id:'net-06', code:'NET-06', name:'Router Configuration'},
-        {id:'net-07', code:'NET-07', name:'IP Address Configuration'},
-        {id:'net-08', code:'NET-08', name:'Basic Network Troubleshooting'},
+      {id:'excel-02', code:'EXCEL-02', name:'Selecting and Editing Cells', tables:[
+        {title:'Selection', rows:[['Shift + Arrow','Extend selection by one cell'],['Ctrl + Shift + Arrow','Select to edge of data region'],['Ctrl + A','Select current region / entire sheet'],['Shift + Space','Select entire row'],['Ctrl + Space','Select entire column']]},
+        {title:'Editing', rows:[['F2','Edit active cell'],['Ctrl + Z','Undo'],['Ctrl + Y','Redo'],['Ctrl + X / C / V','Cut / Copy / Paste'],['Ctrl + D','Fill down'],['Ctrl + R','Fill right'],['Alt + Enter','New line in cell']]}
       ]},
-    { id:'sw', name:'Software', eyebrow:'App Fixes', grad:'linear-gradient(135deg,#4F46E5,#241C7A)',
-      img:'assets/03_Software.png',
-      icon:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
-      items:[
-        {id:'sw-01', code:'SW-01', name:'Windows Installation'},
-        {id:'sw-02', code:'SW-02', name:'Creating a Bootable USB'},
-        {id:'sw-03', code:'SW-03', name:'Software Installation'},
-        {id:'sw-04', code:'SW-04', name:'Driver Installation'},
-        {id:'sw-05', code:'SW-05', name:'Antivirus Installation'},
-        {id:'sw-06', code:'SW-06', name:'Basic Windows Troubleshooting'},
+      {id:'excel-03', code:'EXCEL-03', name:'Formatting Data', tables:[
+        {title:'Formatting', rows:[['Ctrl + B','Bold'],['Ctrl + I','Italic'],['Ctrl + U','Underline'],['Ctrl + 1','Format Cells dialog'],['Ctrl + Shift + $','Currency format'],['Ctrl + Shift + %','Percentage format'],['Ctrl + Shift + #','Date format']]}
       ]},
-    { id:'prog', name:'Programming', eyebrow:'Code It Up', grad:'linear-gradient(135deg,#FF9142,#B85A12)',
-      img:'assets/04_Programming.png',
-      icon:'<path d="m8 9-4 3 4 3M16 9l4 3-4 3M13 6l-2 12"/>',
-      items:[
-        {id:'prog-01', code:'PROG-01', name:'HTML Basics'},
-        {id:'prog-02', code:'PROG-02', name:'CSS Basics'},
-        {id:'prog-03', code:'PROG-03', name:'JavaScript Basics'},
-        {id:'prog-04', code:'PROG-04', name:'Creating a Simple Website'},
-        {id:'prog-05', code:'PROG-05', name:'Basic Programming Concepts'},
+      {id:'excel-04', code:'EXCEL-04', name:'Rows and Columns', tables:[
+        {title:'Rows & Columns', rows:[['Ctrl + Shift + +','Insert row/column'],['Ctrl + -','Delete row/column'],['Ctrl + 9','Hide row'],['Ctrl + Shift + 9','Unhide row'],['Ctrl + 0','Hide column'],['Ctrl + Shift + 0','Unhide column']]}
       ]},
-    { id:'maint', name:'IT Maintenance & Safety', eyebrow:'Stay Protected', grad:'linear-gradient(135deg,#E1435A,#7A1424)',
-      img:'assets/05_IT_Maintenance_Safety.png',
-      icon:'<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>',
-      items:[
-        {id:'maint-01', code:'MAINT-01', name:'Preventive Computer Maintenance'},
-        {id:'maint-02', code:'MAINT-02', name:'Proper Cable Management'},
-        {id:'maint-03', code:'MAINT-03', name:'ESD Safety'},
-        {id:'maint-05', code:'MAINT-05', name:'Data Backup'},
-        {id:'maint-06', code:'MAINT-06', name:'Basic Troubleshooting Steps'},
-        {id:'maint-07', code:'MAINT-07', name:'Occupational Health and Safety'},
-        {id:'maint-08', code:'MAINT-08', name:'5s'},
+      {id:'excel-05', code:'EXCEL-05', name:'Basic Formulas and Functions', tables:[
+        {title:'Formulas', rows:[['=','Start formula'],['Alt + =','AutoSum'],['F4','Toggle absolute/relative reference'],['Ctrl + `','Show/Hide formulas'],['Shift + F3','Insert Function dialog']]}
       ]},
-    { id:'word', name:'Microsoft Word', short:'Word', group:'office',
-      cardName:'Microsoft Office Tools', cardEyebrow:'Office Skills', eyebrow:'Office Skills', grad:'linear-gradient(135deg,#2B7CD3,#123C78)',
-      img:'assets/06_MS_Word.svg',
-      flip:true,
-      noVideos:true,
-      pdf:'pdf/MS_Word_for_Beginners.pdf',
-      pdfTitle:'Microsoft Word for Beginners',
-      pdfMeta:'1.5 hours • 10 lessons',
-      tips:[
-        ['Ctrl + S','Save'],
-        ['F12','Save As'],
-        ['Ctrl + Z','Undo'],
-        ['Ctrl + C / X / V','Copy / Cut / Paste'],
-        ['Ctrl + B / I / U','Bold / Italic / Underline'],
-        ['Ctrl + P','Print'],
-      ],
-      icon:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13l1.5 5 2.5-5 2.5 5L16 13"/>',
-      items:[
-        {id:'word-01', code:'WORD-01', name:'Navigating with the Keyboard', page:3},
-        {id:'word-02', code:'WORD-02', name:'Navigating with the Mouse and Zoom Slider', page:4},
-        {id:'word-03', code:'WORD-03', name:'Common Shortcut Keys', page:5},
-        {id:'word-04', code:'WORD-04', name:'Saving a Document', page:7},
-        {id:'word-05', code:'WORD-05', name:'Closing a Document', page:8},
-        {id:'word-06', code:'WORD-06', name:'Undo, Redo and Repeat', page:8},
-        {id:'word-07', code:'WORD-07', name:'Cut, Copy and Paste', page:9},
-        {id:'word-08', code:'WORD-08', name:'Format Font', page:10},
-        {id:'word-09', code:'WORD-09', name:'Formatting Paragraphs', page:12},
-        {id:'word-10', code:'WORD-10', name:'Spelling and Grammar', page:15},
+      {id:'excel-06', code:'EXCEL-06', name:'Data and Tables', tables:[
+        {title:'Data & Tables', rows:[['Ctrl + T','Create table'],['Ctrl + Shift + L','Toggle filters'],['Alt + Down Arrow','Open filter menu'],['Ctrl + Shift + K','Insert hyperlink']]}
       ]},
-    // Excel
-    { id:'excel', name:'Microsoft Excel', short:'Excel', group:'office', hidden:true,
-      eyebrow:'Office Skills', grad:'linear-gradient(135deg,#21A366,#0B5D36)',
-      img:'assets/06_MS_Word.svg',
-      noVideos:true,
-      pdf:'pdf/MS_Excel_for_Beginners.pdf',
-      pdfTitle:'Microsoft Excel for Beginners',
-      icon:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
-      items:[
-        {id:'excel-01', code:'EXCEL-01', name:'Excel Interface and Basics', tables:[
-          {title:'Workbook & File', rows:[['Ctrl + N','New workbook'],['Ctrl + O','Open'],['Ctrl + S','Save'],['F12','Save As'],['Ctrl + P','Print'],['Ctrl + W','Close workbook']]},
-          {title:'Navigation', rows:[['Ctrl + Arrow','Jump to edge of data region'],['Ctrl + Home','Go to A1 (top-left)'],['Ctrl + End','Go to last used cell'],['Page Up / Page Down','Move one screen up/down'],['Alt + Page Up / Down','Move one screen left/right'],['Ctrl + G or F5','Go To dialog']]}
-        ]},
-        {id:'excel-02', code:'EXCEL-02', name:'Selecting and Editing Cells', tables:[
-          {title:'Selection', rows:[['Shift + Arrow','Extend selection by one cell'],['Ctrl + Shift + Arrow','Select to edge of data region'],['Ctrl + A','Select current region / entire sheet'],['Shift + Space','Select entire row'],['Ctrl + Space','Select entire column']]},
-          {title:'Editing', rows:[['F2','Edit active cell'],['Ctrl + Z','Undo'],['Ctrl + Y','Redo'],['Ctrl + X / C / V','Cut / Copy / Paste'],['Ctrl + D','Fill down'],['Ctrl + R','Fill right'],['Alt + Enter','New line in cell']]}
-        ]},
-        {id:'excel-03', code:'EXCEL-03', name:'Formatting Data', tables:[
-          {title:'Formatting', rows:[['Ctrl + B','Bold'],['Ctrl + I','Italic'],['Ctrl + U','Underline'],['Ctrl + 1','Format Cells dialog'],['Ctrl + Shift + $','Currency format'],['Ctrl + Shift + %','Percentage format'],['Ctrl + Shift + #','Date format']]}
-        ]},
-        {id:'excel-04', code:'EXCEL-04', name:'Rows and Columns', tables:[
-          {title:'Rows & Columns', rows:[['Ctrl + Shift + +','Insert row/column'],['Ctrl + -','Delete row/column'],['Ctrl + 9','Hide row'],['Ctrl + Shift + 9','Unhide row'],['Ctrl + 0','Hide column'],['Ctrl + Shift + 0','Unhide column']]}
-        ]},
-        {id:'excel-05', code:'EXCEL-05', name:'Basic Formulas and Functions', tables:[
-          {title:'Formulas', rows:[['=','Start formula'],['Alt + =','AutoSum'],['F4','Toggle absolute/relative reference'],['Ctrl + `','Show/Hide formulas'],['Shift + F3','Insert Function dialog']]}
-        ]},
-        {id:'excel-06', code:'EXCEL-06', name:'Data and Tables', tables:[
-          {title:'Data & Tables', rows:[['Ctrl + T','Create table'],['Ctrl + Shift + L','Toggle filters'],['Alt + Down Arrow','Open filter menu'],['Ctrl + Shift + K','Insert hyperlink']]}
-        ]},
+    ]},
+  { id:'ppt', name:'Microsoft PowerPoint', short:'PowerPoint', group:'office', hidden:true,
+    eyebrow:'Office Skills', grad:'linear-gradient(135deg,#D24726,#7A230E)',
+    img:'assets/06_MS_Word.svg',
+    noVideos:true,
+    pdf:'pdf/MS_PowerPoint_for_Beginners.pdf',
+    pdfTitle:'Microsoft PowerPoint for Beginners',
+    icon:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
+    items:[
+      {id:'ppt-01', code:'PPT-01', name:'PowerPoint Interface and Basics', tables:[
+        {title:'Helpful Shortcut Keys', rows:[['CTRL+S','Save a presentation'],['CTRL+P','Print a presentation'],['CTRL+O','Open a presentation'],['CTRL+N','Create a new presentation'],['CTRL+M','New slide'],['CTRL+D','Duplicate'],['CTRL+X / C / V','Cut / Copy / Paste'],['CTRL+Z','Undo'],['CTRL+Y or F4','Redo / repeat'],['CTRL+A','Select all'],['CTRL+W or CTRL+F4','Close active presentation'],['CTRL+Q or ALT+F4','Close PowerPoint']]},
+        {title:'Moving In a Presentation', rows:[['CTRL+HOME','First slide'],['CTRL+END','Last slide'],['PAGE DOWN','Next slide'],['PAGE UP','Previous slide'],['F6','Move from pane to pane']]}
       ]},
-    // PowerPoint
-    { id:'ppt', name:'Microsoft PowerPoint', short:'PowerPoint', group:'office', hidden:true,
-      eyebrow:'Office Skills', grad:'linear-gradient(135deg,#D24726,#7A230E)',
-      img:'assets/06_MS_Word.svg',
-      noVideos:true,
-      pdf:'pdf/MS_PowerPoint_for_Beginners.pdf',
-      pdfTitle:'Microsoft PowerPoint for Beginners',
-      icon:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
-      items:[
-        {id:'ppt-01', code:'PPT-01', name:'PowerPoint Interface and Basics', tables:[
-          {title:'Helpful Shortcut Keys', rows:[['CTRL+S','Save a presentation'],['CTRL+P','Print a presentation'],['CTRL+O','Open a presentation'],['CTRL+N','Create a new presentation'],['CTRL+M','New slide'],['CTRL+D','Duplicate'],['CTRL+X / C / V','Cut / Copy / Paste'],['CTRL+Z','Undo'],['CTRL+Y or F4','Redo / repeat'],['CTRL+A','Select all'],['CTRL+W or CTRL+F4','Close active presentation'],['CTRL+Q or ALT+F4','Close PowerPoint']]},
-          {title:'Moving In a Presentation', rows:[['CTRL+HOME','First slide'],['CTRL+END','Last slide'],['PAGE DOWN','Next slide'],['PAGE UP','Previous slide'],['F6','Move from pane to pane']]}
-        ]},
-        {id:'ppt-02', code:'PPT-02', name:'Creating and Designing Slides', tables:[
-          {title:'Formatting In a Presentation', rows:[['CTRL+L','Align left'],['CTRL+R','Align right'],['CTRL+E','Center'],['CTRL+B','Bold text'],['CTRL+K','Insert hyperlink']]},
-          {title:'Creating and Selecting Objects', rows:[['Hold SHIFT + drag','Draw a perfect shape'],['SHIFT+ALT+F9','Show/Hide ruler'],['SHIFT+F9','Show/Hide gridlines'],['ALT+F9','Show/Hide guides'],['Hold SHIFT and click','Select multiple objects'],['TAB / SHIFT+TAB','Select an object'],['CTRL+A','Select all objects']]},
-          {title:'Deleting and Copying', rows:[['CTRL+D','Copy a shape'],['CTRL+SHIFT + drag','Copy a shape and align with original'],['BACKSPACE','Delete one character to the left'],['CTRL+BACKSPACE','Delete one word to the left'],['DELETE','Delete one character to the right'],['CTRL+DELETE','Delete one word to the right']]}
-        ]},
-        {id:'ppt-03', code:'PPT-03', name:'Working with Text and Outline', tables:[
-          {title:'Moving Around In Text', rows:[['CTRL + ← / →','One word left / right'],['HOME / END','Beginning / end of a line'],['CTRL + ↑ / ↓','Up / down one paragraph'],['CTRL+HOME / END','Beginning / end of a text box'],['CTRL+ENTER','Next title or body placeholder'],['CTRL+F or F4','Find'],['SHIFT+F4','Repeat last Find']]},
-          {title:'Working In an Outline', rows:[['CTRL+SHIFT+TAB','Switch Outline / Slides pane'],['SHIFT+TAB','Promote a paragraph'],['TAB','Demote a paragraph'],['ALT+SHIFT+↑ / ↓','Move selected paragraphs up / down'],['ALT+SHIFT+1','Show heading level 1'],['ALT+SHIFT+PLUS','Expand text below a heading'],['ALT+SHIFT+MINUS','Collapse text below a heading'],['ALT+SHIFT+A','Show all text or headings']]}
-        ]},
-        {id:'ppt-04', code:'PPT-04', name:'Running a Slide Show', tables:[
-          {title:'Running & Navigating', rows:[['F5','Run from the beginning'],['SHIFT+F5','Run from the current slide'],['ALT+F5','Run with Presenter View'],['→ ↓ N ENTER SPACEBAR','Next slide'],['← ↑ P BACKSPACE','Previous slide'],['<number>+ENTER','Go to slide number'],['HOME','Return to first slide'],['END','Go to last slide'],['CTRL+S','Open the Slide Selector'],['G','See all slides'],['ESC','End a slide show']]},
-          {title:'Displaying & Annotating', rows:[['B or PERIOD','Black screen'],['W or COMMA','White screen'],['CTRL+P','Pointer to pen'],['CTRL+A or CTRL+U','Pointer to arrow'],['CTRL+E','Pointer to eraser'],['CTRL+I','Pointer to highlighter'],['E','Erase on-screen ink'],['CTRL+L','Laser pointer'],['CTRL+M','Show/hide ink markups'],['CTRL+H','Hide pointer and buttons'],['+ / -','Zoom in / out'],['J','Subtitles on/off']]}
-        ]},
-        {id:'ppt-05', code:'PPT-05', name:'Presenter View, Rehearsing and Media', tables:[
-          {title:'Presenter View', rows:[['ALT+F5','Start Presenter View'],['F6','Cycle between regions'],['TAB','Cycle through tools'],['ALT+W','Read the elapsed time'],['CTRL+PAGE DOWN / UP','Scroll Notes pane']]},
-          {title:'Rehearsing & Hyperlinks', rows:[['T','Set new timings while rehearsing'],['R','Re-record narration and timing'],['TAB / SHIFT+TAB','Next / previous hyperlink'],['ENTER','Run selected hyperlink']]},
-          {title:'Working with Media', rows:[['ALT+P','Play/pause'],['ALT+Q','Stop playback'],['ALT+DOWN / UP','Volume down / up'],['ALT+U','Mute/unmute']]},
-          {title:'Getting Help', rows:[['F1','Help during slide show'],['CTRL+T','View task bar'],['SHIFT+F10','Display the shortcut menu']]}
-        ]},
+      {id:'ppt-02', code:'PPT-02', name:'Creating and Designing Slides', tables:[
+        {title:'Formatting In a Presentation', rows:[['CTRL+L','Align left'],['CTRL+R','Align right'],['CTRL+E','Center'],['CTRL+B','Bold text'],['CTRL+K','Insert hyperlink']]},
+        {title:'Creating and Selecting Objects', rows:[['Hold SHIFT + drag','Draw a perfect shape'],['SHIFT+ALT+F9','Show/Hide ruler'],['SHIFT+F9','Show/Hide gridlines'],['ALT+F9','Show/Hide guides'],['Hold SHIFT and click','Select multiple objects'],['TAB / SHIFT+TAB','Select an object'],['CTRL+A','Select all objects']]},
+        {title:'Deleting and Copying', rows:[['CTRL+D','Copy a shape'],['CTRL+SHIFT + drag','Copy a shape and align with original'],['BACKSPACE','Delete one character to the left'],['CTRL+BACKSPACE','Delete one word to the left'],['DELETE','Delete one character to the right'],['CTRL+DELETE','Delete one word to the right']]}
       ]},
-  ];
-  const MUSIC_CAT = { id:'music', code:'MUS-01', name:'Music', eyebrow:'While You Watch', grad:'linear-gradient(135deg,#C471ED,#7B2FF7)', isMusic:true,
-    img:'assets/06_Media.png',
-    icon:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>' };
+      {id:'ppt-03', code:'PPT-03', name:'Working with Text and Outline', tables:[
+        {title:'Moving Around In Text', rows:[['CTRL + ← / →','One word left / right'],['HOME / END','Beginning / end of a line'],['CTRL + ↑ / ↓','Up / down one paragraph'],['CTRL+HOME / END','Beginning / end of a text box'],['CTRL+ENTER','Next title or body placeholder'],['CTRL+F or F4','Find'],['SHIFT+F4','Repeat last Find']]},
+        {title:'Working In an Outline', rows:[['CTRL+SHIFT+TAB','Switch Outline / Slides pane'],['SHIFT+TAB','Promote a paragraph'],['TAB','Demote a paragraph'],['ALT+SHIFT+↑ / ↓','Move selected paragraphs up / down'],['ALT+SHIFT+1','Show heading level 1'],['ALT+SHIFT+PLUS','Expand text below a heading'],['ALT+SHIFT+MINUS','Collapse text below a heading'],['ALT+SHIFT+A','Show all text or headings']]}
+      ]},
+      {id:'ppt-04', code:'PPT-04', name:'Running a Slide Show', tables:[
+        {title:'Running & Navigating', rows:[['F5','Run from the beginning'],['SHIFT+F5','Run from the current slide'],['ALT+F5','Run with Presenter View'],['→ ↓ N ENTER SPACEBAR','Next slide'],['← ↑ P BACKSPACE','Previous slide'],['<number>+ENTER','Go to slide number'],['HOME','Return to first slide'],['END','Go to last slide'],['CTRL+S','Open the Slide Selector'],['G','See all slides'],['ESC','End a slide show']]},
+        {title:'Displaying & Annotating', rows:[['B or PERIOD','Black screen'],['W or COMMA','White screen'],['CTRL+P','Pointer to pen'],['CTRL+A or CTRL+U','Pointer to arrow'],['CTRL+E','Pointer to eraser'],['CTRL+I','Pointer to highlighter'],['E','Erase on-screen ink'],['CTRL+L','Laser pointer'],['CTRL+M','Show/hide ink markups'],['CTRL+H','Hide pointer and buttons'],['+ / -','Zoom in / out'],['J','Subtitles on/off']]}
+      ]},
+      {id:'ppt-05', code:'PPT-05', name:'Presenter View, Rehearsing and Media', tables:[
+        {title:'Presenter View', rows:[['ALT+F5','Start Presenter View'],['F6','Cycle between regions'],['TAB','Cycle through tools'],['ALT+W','Read the elapsed time'],['CTRL+PAGE DOWN / UP','Scroll Notes pane']]},
+        {title:'Rehearsing & Hyperlinks', rows:[['T','Set new timings while rehearsing'],['R','Re-record narration and timing'],['TAB / SHIFT+TAB','Next / previous hyperlink'],['ENTER','Run selected hyperlink']]},
+        {title:'Working with Media', rows:[['ALT+P','Play/pause'],['ALT+Q','Stop playback'],['ALT+DOWN / UP','Volume down / up'],['ALT+U','Mute/unmute']]},
+        {title:'Getting Help', rows:[['F1','Help during slide show'],['CTRL+T','View task bar'],['SHIFT+F10','Display the shortcut menu']]}
+      ]},
+    ]},
+];
+const MUSIC_CAT = { id:'music', code:'MUS-01', name:'Music', eyebrow:'While You Watch', grad:'linear-gradient(135deg,#C471ED,#7B2FF7)', isMusic:true,
+  img:'assets/06_Media.png',
+  icon:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>' };
 
-  const LEAVES = [];
-  SECTIONS.forEach(sec => sec.items.forEach(it => LEAVES.push({...it, sectionId:sec.id, sectionName:sec.name, grad:sec.grad, icon:sec.icon})));
-  function findLeaf(id){ return LEAVES.find(l=>l.id===id); }
-  function findSection(id){ return SECTIONS.find(s=>s.id===id); }
+const LEAVES = [];
+SECTIONS.forEach(sec => sec.items.forEach(it => LEAVES.push({...it, sectionId:sec.id, sectionName:sec.name, grad:sec.grad, icon:sec.icon})));
+function findLeaf(id){ return LEAVES.find(l=>l.id===id); }
+function findSection(id){ return SECTIONS.find(s=>s.id===id); }
 
-  /* Video library */
-  const VIDEO_LIBRARY = {
-    // ---- Hardware ----
-    'hw-01': [{name:'EDwander https://youtu.be/Egp8K9iObNM?si=tQG-F6JJF8QcJ1kr', src:'videos/HW-01-part1.mp4'}, {name: 'Assemble step by step', src:'videos/HW-01-part2.mp4'}], // System Unit Assembly
-    'hw-02': [{name:'EDwander https://youtu.be/Egp8K9iObNM?si=tQG-F6JJF8QcJ1kr', src:'videos/HW-02-part2.mp4'}, {name: 'Disassemble step by step', src:'videos/HW-02.mp4'}], // System Unit Disassembly
-    'hw-03': [{name:'Exploring My Computer https://youtu.be/DCcJ5U9dGTs?si=yGdmq1J1dTB8vHEb', src:'videos/HW-03-part1.mp4'}], // Function of Motherboard
-    'hw-04': [{name:'@SYNTHARAPH https://youtu.be/_Ew68nD1siE?si=scwOLYeZs8pohHaQ', src:'videos/HW-04-part1.mp4'}], // Parts Of System Unit
+const VIDEO_LIBRARY = {
+  'hw-01': [{name:'System Unit Assembly', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/aIsmvS4EJ7M?si=aPetKzIM_8IaX9ey" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'hw-02': [{name:'System Unit Disassembly', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/Egp8K9iObNM?si=z0nObAJxmYfwpwo6" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'hw-03': [{name:'Function of Motherboard', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/DCcJ5U9dGTs?si=A3RfEk5NBRjziJ1x" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'hw-04': [{name:'Parts of System Unit', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/_Ew68nD1siE?si=c35kV2nZTOQsLX77" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
 
-    // ---- Networking ----
-    'net-01': [{name:'SHEM https://youtu.be/j85IqRQlJDs?si=CckXk5QQmqU25oK8', src:'videos/NET-01-part1.mp4'}], // Creating a Straight-Through Cable
-    'net-02': [{name:'SHEM https://youtu.be/j85IqRQlJDs?si=CckXk5QQmqU25oK8', src:'videos/NET-02-part1.mp4'}], // Creating a Crossover Cable
-    'net-03': [{name:'Switched On Network https://youtu.be/QMpWkkqX1eM?si=ouEneZshsSWurjXQ', src:'videos/NET-03-part1.mp4'}], // RJ45 Crimping
-    'net-06': [{name:'OFW IT https://youtu.be/ag7O4Of1geE?si=9jrfSDsFGnRcRkNe', src:'videos/NET-06-part1.mkv'}], // Router Configuration
-    'net-07': [{name:'WhiteboarDoodles https://youtu.be/zZ02fvBXNAI?si=G_c3NukTefWa3bbE', src:'videos/NET-07-part1.mp4'}], // IP Address Configuration
-    'net-08': [{name:'Basic Network Troubleshooting', src:'videos/NET-08-part1.mp4'}], // Basic Network Troubleshooting
+  'net-01': [{name:'Creating a Straight-Through Cable', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/j85IqRQlJDs?si=7mBPf7rYe9MgDpnq" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'net-02': [{name:'Creating a Crossover Cable', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/LKxzJk08Ma8?si=oSC5m-oXJ1b5RgiD" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'net-03': [{name:'RJ45 Crimping', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/QMpWkkqX1eM?si=tYlgVzyVLvmOCrcQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'net-06': [{name:'Router Configuration', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/ag7O4Of1geE?si=AYbOS9LSJdPi4EwE" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'net-07': [{name:'IP Address Configuration', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/zZ02fvBXNAI?si=6CLGhZCPHT41pNwW" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'net-08': [{name:'Basic Network Troubleshooting', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/JSte0MkHjNQ?si=gNX5Q3sOnMn-A5XT" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
 
-    // ---- Software ----
-    'sw-01': [{name:'Geeks Tutorial https://youtu.be/v4hHQrivf-k?si=819GQzaGuEZCYMH5', src:'videos/SW-01-part1.webm'}, {name:'Geeks Tutorialhttps://youtu.be/h7KrsciBT4c?si=-vVGmc1a0YQMQJ35', src:'videos/SW-01-part2.webm'}], // Windows Installation
-    'sw-02': [{name:'Memory https://youtu.be/Pw6xZuR_yE8?si=IT8ZqEo8vTEBu9Ls', src:'videos/SW-02-part1.mp4'}, {name:'Memory https://youtu.be/Pw6xZuR_yE8?si=IT8ZqEo8vTEBu9Ls', src:'videos/SW-02-part2.mp4'}], // Creating a Bootable USB
-    'sw-03': [{name:'EVERYTHING ABOUT COMPUTING https://youtu.be/RoADWry3evU?si=11REswBqctU_D6x7', src:'videos/SW-03-part1.mp4'}], // Software Installation
-    'sw-04': [{name:'Memory https://youtu.be/Pw6xZuR_yE8?si=R0k7fOtyKjJDqIym', src:'videos/SW-04-part1.webm'}], // Driver Installation
-    'sw-05': [{name:'ProgrammingKnowledge2 https://youtu.be/05Gy9f8Wqvc?si=zvmYB8OADM1KXh85', src:'videos/SW-05-part1.mp4'}], // Antivirus Installation
-    'sw-06': [{name:'nlcithelpdeskhttps://youtu.be/JSte0MkHjNQ?si=W0EAzJQlwWiP8bp_', src:'videos/SW-06-part1.mp4'}], // Basic Windows Troubleshooting
+  'sw-01': [
+    {name:'Windows Installation - Part 1', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/v4hHQrivf-k?si=TRM_kWGR03ugUPQb" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'},
+    {name:'Windows Installation - Part 2', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/h7KrsciBT4c?si=BzRnPT8c80UofD64" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}
+  ],
+  'sw-02': [
+    {name:'Creating a Bootable USB - Part 1', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/Pw6xZuR_yE8?si=fzk62eQlNfVahVP5" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'},
+    {name:'Creating a Bootable USB - Part 2', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/Pw6xZuR_yE8?si=zPVvsbSBeF-fI77C" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}
+  ],
+  'sw-03': [{name:'Software Installation', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/RoADWry3evU?si=6P4TH3Jwx6iaYWfr" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'sw-04': [{name:'Driver Installation', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/Pw6xZuR_yE8?si=ZX5Mp7l6GEKgvonx" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'sw-05': [{name:'Antivirus Installation', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/05Gy9f8Wqvc?si=re6cHsKeBVelIZcO" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'sw-06': [{name:'Basic Windows Troubleshooting', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/JSte0MkHjNQ?si=wEFhxvPCVOomhld_" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
 
-    // ---- Programming ----
-    'prog-01': [{name:'Geeker Mag. https://youtu.be/WSHTbyVbQMI?si=sxMg-osVxNfQgarJ', src:'videos/PROG-01-part1.mp4'}], // HTML Basics
-    'prog-02': [{name:'Aaron Jack https://youtu.be/Z4pCqK-V_Wo?si=azwJiWlf8zhg8Oco', src:'videos/PROG-02-part1.mp4'}], // CSS Basics
-    'prog-03': [{name:'Coding2GO https://youtu.be/xKOyDDuQSVY?si=_HPwyQqMgasz3WHy', src:'videos/PROG-03-part1.mp4'}], // JavaScript Basics
-    'prog-04': [{name:'Marighoul https://youtu.be/9z8FP8ear2Y?si=BDQ_XFuJvehC86Qk', src:'videos/PROG-04-part1.mp4'}], // Creating a Simple Website
-    'prog-05': [{name:'Doji Creates https://youtu.be/7XnAp8s25mI?si=p0YIXVbwagDF3tgp', src:'videos/PROG-05-part1.mp4'}], // Basic Programming Concepts
+  'prog-01': [{name:'HTML Basics', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/WSHTbyVbQMI?si=qNzMvEYvahJVS9Bt" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'prog-02': [{name:'CSS Basics', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/Z4pCqK-V_Wo?si=f4WPGY-JapLnUkgD" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'prog-03': [{name:'JavaScript Basics', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/xKOyDDuQSVY?si=oDQKI7tcNraFUHnH" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'prog-04': [{name:'Creating a Simple Website', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/9z8FP8ear2Y?si=Xj3dHnlCGv0oZbb7" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'prog-05': [{name:'Basic Programming Concepts', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/7XnAp8s25mI?si=CJr8KMoWgtHO-32P" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
 
-    // ---- IT Maintenance & Safety ----
-    'maint-01': [{name:'MaxsTech https://youtu.be/ZYGND_SLqUQ?si=RSxHOpuynmI3f0HA', src:'videos/MAINT-01-part1.mp4'}], // Preventive Computer Maintenance
-    'maint-02': [{name:'PCXTV https://youtu.be/zGPOT11y3qw?si=8-clCaMjU0X829iO', src:'videos/MAINT-02-part1.mp4'}], // Proper Cable Management
-    'maint-03': [{name:'BondlineESDProducts https://youtu.be/rK9bqZgxOMs?si=DBeJ0APIuOUe-qlO', src:'videos/MAINT-03-part1.mp4'}], // ESD Safety
-    'maint-05': [{name:'Kingston Technology https://youtu.be/MIGVnyXm1mk?si=03rwhR5RjBpuuWH2', src:'videos/MAINT-05-part1.mp4'}], // Data Backup
-    'maint-06': [{name:'Professor Messer https://youtu.be/HgeURynWn_w?si=vVYmLe_SklM5IEhU', src:'videos/MAINT-06-part1.webm'}], // Basic Troubleshooting Steps
-    'maint-07': [{name:'Teacher Mej TV https://youtu.be/m5gxAICpKps?si=NpQjBPVfVi3_tBsR', src:'videos/MAINT-07-part1.mp4'}], // Occupational Health and Safety
-    'maint-08': [{name:'Digital E-Learninghttps://youtu.be/5-Vx76AVLao?si=OPptwA2dMfSe0Cd4', src:'videos/MAINT-08-part1.mkv'}], // 5s
+  'maint-01': [{name:'Preventive Computer Maintenance', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/ZYGND_SLqUQ?si=mfld4ZRklXFuSXcg" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'maint-02': [{name:'Proper Cable Management', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/zGPOT11y3qw?si=tUZJ5CSCyX3S0DTv" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'maint-03': [{name:'ESD Safety', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/rK9bqZgxOMs?si=Kt84M4q-TMyt2EJD" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'maint-05': [{name:'Data Backup', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/MIGVnyXm1mk?si=JfdyyL3W9vS8oe1E" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'maint-06': [{name:'Basic Troubleshooting Steps', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/HgeURynWn_w?si=Obk0cZ-TY2Qq0apf" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'maint-07': [{name:'Occupational Health and Safety', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/m5gxAICpKps?si=rmaDkAer-ZkunV8b" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
+  'maint-08': [{name:'5S', embed:'<iframe width="560" height="315" src="https://www.youtube.com/embed/5-Vx76AVLao?si=uv0UFeMmR2SCmyZE" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>'}],
 
-    // ---- MS Word ----
-    'word-01': [], // Navigating with the Keyboard
-    'word-02': [], // Navigating with the Mouse and Zoom Slider
-    'word-03': [], // Common Shortcut Keys
-    'word-04': [], // Saving a Document
-    'word-05': [], // Closing a Document
-    'word-06': [], // Undo, Redo and Repeat
-    'word-07': [], // Cut, Copy and Paste
-    'word-08': [], // Format Font
-    'word-09': [], // Formatting Paragraphs
-    'word-10': [], // Spelling and Grammar
-    // Excel and PowerPoint
-    'excel-01': [], 'excel-02': [], 'excel-03': [], 'excel-04': [], 'excel-05': [], 'excel-06': [],
-    'ppt-01': [], 'ppt-02': [], 'ppt-03': [], 'ppt-04': [], 'ppt-05': [],
-  };
+  'word-01': [], 'word-02': [], 'word-03': [], 'word-04': [], 'word-05': [],
+  'word-06': [], 'word-07': [], 'word-08': [], 'word-09': [], 'word-10': [],
+  'excel-01': [], 'excel-02': [], 'excel-03': [], 'excel-04': [], 'excel-05': [], 'excel-06': [],
+  'ppt-01': [], 'ppt-02': [], 'ppt-03': [], 'ppt-04': [], 'ppt-05': [],
+};
 
-  /* Song library */
-  const SONG_LIBRARY = [
-   {name:'Team Yey', src:'songs/Team Yey.mp3'},
-   {name:'ABBA - Dancing Queen (Official Music Video)', src:'songs/ABBA - Dancing Queen (Official Music Video).mp3'},
-   {name:'Adie - Oh, Giliw (Official Lyric Video)', src:'songs/Adie - Oh, Giliw (Official Lyric Video).mp3'},
-   {name:'Adie - Paraluman (Live Performance)', src:'songs/Adie - Paraluman (Live Performance).mp3'},
-  {name:'Angeline Quinto - I Just Fall In Love Again', src:'songs/Angeline Quinto - I Just Fall In Love Again.mp3'},
-   {name:'Anne Murray - If I Ever Fall In Love Again (Duet with Kenny Rogers) ft. Kenny Rogers', src:'songs/Anne Murray - If I Ever Fall In Love Again (Duet with Kenny Rogers) ft. Kenny Rogers.mp3'},
-   {name:'Arthur Nery - Di Nakakasawa (Official Lyric Video)', src:'songs/Arthur Nery - Di Nakakasawa (Official Lyric Video)'},
-   {name:'Arthur Nery - Favorite Vice (Official Lyric Video)', src:'songs/Arthur Nery - Favorite Vice (Official Lyric Video)'},
-  {name:'Arthur Nery - Isa Lang (Official Music Video)', src:'songs/Arthur Nery - Isa Lang (Official Music Video)'},
-   {name:'Arthur Nery performs "Binhi" LIVE on Wish 107.5 Bus', src:'songs/Arthur Nery performs "Binhi" LIVE on Wish 107.5 Bus.mp3'},
-  {name:'Bakit Ba Minamahal Kita - Angeline Quinto  (Music Video)', src:'songs/Bakit Ba Minamahal Kita - Angeline Quinto  (Music Video).mp3'},
-  {name:'Ben&Ben - Duyan ｜ Official Lyric Video', src:'songs/Ben&Ben - Duyan ｜ Official Lyric Video.mp3'},
-  {name:'Ben&Ben - Leaves (Reimagined)', src:'songs/Ben&Ben - Leaves (Reimagined).mp3'},
-  {name:'Ben&Ben - Lifetime (Reimagined) - A Performance Video', src:'songs/Ben&Ben - Lifetime (Reimagined) - A Performance Video.mp3'},
-   {name:'Billie Eilish - BIRDS OF A FEATHER', src:'songs/Billie Eilish - BIRDS OF A FEATHER.mp3'},
-   {name:'Bruno Mars - Just The Way You Are (Official Music Video)', src:'songs/Bruno Mars - Just The Way You Are (Official Music Video).mp3'},
-   {name:'Bruno Mars - Risk It All [Official Music Video]', src:'songs/Bruno Mars - Risk It All [Official Music Video].mp3'},
-  {name:'Bruno Mars - Talking To The Moon (Official Lyric Video)', src:'songs/Bruno Mars - Talking To The Moon (Official Lyric Video).mp3'},
-  {name:'Celine Dion - I Love You (from the Original performance) (Official Video)', src:'songs/Celine Dion - I Love You (from the Original performance) (Official Video).mp3'},
-  {name:'Co-Pilot - Just Hush  (featuring J.O.L.O. & Rjay Ty) [Official Lyric Video]', src:'songs/Co-Pilot - Just Hush  (featuring J.O.L.O. & Rjay Ty) [Official Lyric Video]'},
-  {name:'December Avenue - Bulong (OFFICIAL MUSIC VIDEO)', src:'songs/December Avenue - Bulong (OFFICIAL MUSIC VIDEO)',},
-  {name:'December Avenue - Eroplanong Papel Lyric Video (Official)', src:'songs/December Avenue - Eroplanong Papel Lyric Video (Official).mp3'},
-  {name:'Dionela - Marilag (Lyrics)', src:'songs/Dionela - Marilag (Lyrics)'},
-  {name:'Dionela - Oksihina (Lyrics)', src:'songs/Dionela - Oksihina (Lyrics).mp3'},
-  {name:'Ed Sheeran - Photograph (Lyrics)', src:'songs/Ed Sheeran - Photograph (Lyrics).mp3'},
-  {name:'Eraserheads - Ligaya [Lyric Video]', src:'songs/Eraserheads - Ligaya [Lyric Video].mp3'},
-  {name:'Eric Clapton - Wonderful Tonight [Official Live]', src:'songs/Eric Clapton - Wonderful Tonight [Official Live].mp3'},
-  {name:'IV Of Spades - Kabisado (Lyrics)', src:'songs/IV Of Spades - Kabisado (Lyrics).mp3'},
-  {name:'Jolianne, Arthur Nery – Palayo Sa Mundo (Official Lyric Video)', src:'songs/Jolianne, Arthur Nery – Palayo Sa Mundo (Official Lyric Video).mp3'},
-  {name:'Jona - Maghihintay Ako (Official Recording Session with Lyrics)', src:'songs/Jona - Maghihintay Ako (Official Recording Session with Lyrics).mp3'},
-  {name:'Justin Bieber - That Should Be Me', src:'songs/Justin Bieber - That Should Be Me.mp3'},
-  {name:'Katy Perry - Unconditionally (Official)', src:'songs/Katy Perry - Unconditionally (Official).mp3'},
-  {name:'Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)', src:'songs/Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video).mp3'},
-  {name:'Lil Eddie - Statue (Lyrics)', src:'songs/Lil Eddie - Statue (Lyrics).mp3'},
-  {name:'Maki - Kailan？ (Official Lyric Video)', src:'songs/Maki - Kailan？ (Official Lyric Video).mp3'},
-  {name:''}
+const SONG_LIBRARY = [
+ {name:'Team Yey', src:'songs/Team Yey.mp3'},
+ {name:'ABBA - Dancing Queen (Official Music Video)', src:'songs/ABBA - Dancing Queen (Official Music Video).mp3'},
+ {name:'Adie - Oh, Giliw (Official Lyric Video)', src:'songs/Adie - Oh, Giliw (Official Lyric Video).mp3'},
+ {name:'Adie - Paraluman (Live Performance)', src:'songs/Adie - Paraluman (Live Performance).mp3'},
+{name:'Angeline Quinto - I Just Fall In Love Again', src:'songs/Angeline Quinto - I Just Fall In Love Again.mp3'},
+ {name:'Anne Murray - If I Ever Fall In Love Again (Duet with Kenny Rogers) ft. Kenny Rogers', src:'songs/Anne Murray - If I Ever Fall In Love Again (Duet with Kenny Rogers) ft. Kenny Rogers.mp3'},
+ {name:'Arthur Nery - Di Nakakasawa (Official Lyric Video)', src:'songs/Arthur Nery - Di Nakakasawa (Official Lyric Video)'},
+ {name:'Arthur Nery - Favorite Vice (Official Lyric Video)', src:'songs/Arthur Nery - Favorite Vice (Official Lyric Video)'},
+{name:'Arthur Nery - Isa Lang (Official Music Video)', src:'songs/Arthur Nery - Isa Lang (Official Music Video)'},
+ {name:'Arthur Nery performs "Binhi" LIVE on Wish 107.5 Bus', src:'songs/Arthur Nery performs "Binhi" LIVE on Wish 107.5 Bus.mp3'},
+{name:'Bakit Ba Minamahal Kita - Angeline Quinto  (Music Video)', src:'songs/Bakit Ba Minamahal Kita - Angeline Quinto  (Music Video).mp3'},
+{name:'Ben&Ben - Duyan ｜ Official Lyric Video', src:'songs/Ben&Ben - Duyan ｜ Official Lyric Video.mp3'},
+{name:'Ben&Ben - Leaves (Reimagined)', src:'songs/Ben&Ben - Leaves (Reimagined).mp3'},
+{name:'Ben&Ben - Lifetime (Reimagined) - A Performance Video', src:'songs/Ben&Ben - Lifetime (Reimagined) - A Performance Video.mp3'},
+ {name:'Billie Eilish - BIRDS OF A FEATHER', src:'songs/Billie Eilish - BIRDS OF A FEATHER.mp3'},
+ {name:'Bruno Mars - Just The Way You Are (Official Music Video)', src:'songs/Bruno Mars - Just The Way You Are (Official Music Video).mp3'},
+ {name:'Bruno Mars - Risk It All [Official Music Video]', src:'songs/Bruno Mars - Risk It All [Official Music Video].mp3'},
+{name:'Bruno Mars - Talking To The Moon (Official Lyric Video)', src:'songs/Bruno Mars - Talking To The Moon (Official Lyric Video).mp3'},
+{name:'Celine Dion - I Love You (from the Original performance) (Official Video)', src:'songs/Celine Dion - I Love You (from the Original performance) (Official Video).mp3'},
+{name:'Co-Pilot - Just Hush  (featuring J.O.L.O. & Rjay Ty) [Official Lyric Video]', src:'songs/Co-Pilot - Just Hush  (featuring J.O.L.O. & Rjay Ty) [Official Lyric Video]'},
+{name:'December Avenue - Bulong (OFFICIAL MUSIC VIDEO)', src:'songs/December Avenue - Bulong (OFFICIAL MUSIC VIDEO)',},
+{name:'December Avenue - Eroplanong Papel Lyric Video (Official)', src:'songs/December Avenue - Eroplanong Papel Lyric Video (Official).mp3'},
+{name:'Dionela - Marilag (Lyrics)', src:'songs/Dionela - Marilag (Lyrics)'},
+{name:'Dionela - Oksihina (Lyrics)', src:'songs/Dionela - Oksihina (Lyrics).mp3'},
+{name:'Ed Sheeran - Photograph (Lyrics)', src:'songs/Ed Sheeran - Photograph (Lyrics).mp3'},
+{name:'Eraserheads - Ligaya [Lyric Video]', src:'songs/Eraserheads - Ligaya [Lyric Video].mp3'},
+{name:'Eric Clapton - Wonderful Tonight [Official Live]', src:'songs/Eric Clapton - Wonderful Tonight [Official Live].mp3'},
+{name:'IV Of Spades - Kabisado (Lyrics)', src:'songs/IV Of Spades - Kabisado (Lyrics).mp3'},
+{name:'Jolianne, Arthur Nery – Palayo Sa Mundo (Official Lyric Video)', src:'songs/Jolianne, Arthur Nery – Palayo Sa Mundo (Official Lyric Video).mp3'},
+{name:'Jona - Maghihintay Ako (Official Recording Session with Lyrics)', src:'songs/Jona - Maghihintay Ako (Official Recording Session with Lyrics).mp3'},
+{name:'Justin Bieber - That Should Be Me', src:'songs/Justin Bieber - That Should Be Me.mp3'},
+{name:'Katy Perry - Unconditionally (Official)', src:'songs/Katy Perry - Unconditionally (Official).mp3'},
+{name:'Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video)', src:'songs/Lady Gaga, Bruno Mars - Die With A Smile (Official Music Video).mp3'},
+{name:'Lil Eddie - Statue (Lyrics)', src:'songs/Lil Eddie - Statue (Lyrics).mp3'},
+{name:'Maki - Kailan？ (Official Lyric Video)', src:'songs/Maki - Kailan？ (Official Lyric Video).mp3'},
+{name:''}
 
 ];
-  
-  const sharedVideos = {};   // leafId -> [{name,url}] — shared across all accounts
-  LEAVES.forEach(l => { sharedVideos[l.id] = (VIDEO_LIBRARY[l.id] || []).map(v => ({ name:v.name, url:v.src })); });
-  let sharedSongs = SONG_LIBRARY.map(s => ({ name:s.name, url:s.src })); // shared across all accounts
 
-  let returnStack = [];      // [{ id, scroll }]
-  let returningBack = false;
+const sharedVideos = {};
+LEAVES.forEach(l => { sharedVideos[l.id] = (VIDEO_LIBRARY[l.id] || []).map(v => ({ name:v.name, url:v.src || '', embed:v.embed || '' })); });
+let sharedSongs = SONG_LIBRARY.map(s => ({ name:s.name, url:s.src }));
 
-  let currentCat = null;
-  let currentSection = null;
-  let playingIndex = null;
-  const audioEl = new Audio();
+let returnStack = [];
+let returningBack = false;
 
-  const detailTitle = document.getElementById('detailTitle');
-  const detailCode = document.getElementById('detailCode');
-  const videoGrid = document.getElementById('videoGrid');
-  const videoInput = document.getElementById('videoInput');
-  const sideCatList = document.getElementById('sideCatList');
-  const todayGrid = document.getElementById('todayGrid');
+let currentCat = null;
+let currentSection = null;
+let playingIndex = null;
+const audioEl = new Audio();
 
-  let expandedSections = new Set();
-  const CHEVRON = '<path d="m9 18 6-6-6-6"/>';
+const detailTitle = document.getElementById('detailTitle');
+const detailCode = document.getElementById('detailCode');
+const videoGrid = document.getElementById('videoGrid');
+const videoInput = document.getElementById('videoInput');
+const sideCatList = document.getElementById('sideCatList');
+const todayGrid = document.getElementById('todayGrid');
 
-  function renderSidebar(){
-    let html = '';
-    SECTIONS.forEach(sec => {
-      const isOpen = expandedSections.has(sec.id);
-      html += `<div class="side-group toggle" data-toggle="${sec.id}">
-        <span class="side-group-label"><svg class="side-group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${sec.icon}</svg>${sec.name}</span>
-        <svg class="side-chevron ${isOpen?'open':''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CHEVRON}</svg>
-      </div>`;
-      html += `<div class="side-items ${isOpen?'open':''}" id="items-${sec.id}"><div class="side-items-inner">`;
-      html += sec.items.map(it => `
-        <div class="nav-row ${currentCat===it.id?'selected':''}" data-id="${it.id}">
-          ${it.name}
-        </div>
-      `).join('');
-      html += `</div></div>`;
-    });
-    sideCatList.innerHTML = html;
-    sideCatList.querySelectorAll('.nav-row').forEach(el=>{
-      el.addEventListener('click', ()=>{ openCategory(el.dataset.id, true); closeSidebar(); });
-    });
-    sideCatList.querySelectorAll('.side-group.toggle').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        const id = el.dataset.toggle;
-        if(expandedSections.has(id)) expandedSections.delete(id); else expandedSections.add(id);
-        renderSidebar();
-      });
-    });
-  }
+let expandedSections = new Set();
+const CHEVRON = '<path d="m9 18 6-6-6-6"/>';
 
-  // Recent block
-  const feedArrowLeft = document.getElementById('feedArrowLeft');
-  const feedArrowRight = document.getElementById('feedArrowRight');
-  function scrollHomeFeed(dir){
-    const feed = document.getElementById('homeFeed');
-    if(!feed) return;
-    feed.scrollBy({ left: dir * 250, behavior:'smooth' });
-  }
-  function updateFeedArrows(){
-    const feed = document.getElementById('homeFeed');
-    if(!feed || !feedArrowLeft || !feedArrowRight) return;
-    const canScroll = feed.scrollWidth > feed.clientWidth + 2;
-    feedArrowLeft.classList.toggle('hidden', !canScroll || feed.scrollLeft <= 2);
-    feedArrowRight.classList.toggle('hidden', !canScroll || feed.scrollLeft + feed.clientWidth >= feed.scrollWidth - 2);
-  }
-  if(feedArrowLeft) feedArrowLeft.addEventListener('click', ()=> scrollHomeFeed(-1));
-  if(feedArrowRight) feedArrowRight.addEventListener('click', ()=> scrollHomeFeed(1));
-  document.getElementById('homeFeed') && document.getElementById('homeFeed').addEventListener('scroll', updateFeedArrows);
-
-  function renderHomeFeed(){
-    const feed = document.getElementById('homeFeed');
-    if(!feed) return;
-    const activity = ((getUserData() && getUserData().activity) || []).filter(a=>{
-      if(a.type !== 'watch' || !a.id) return true;
-      const lf = findLeaf(a.id);
-      const sc = lf && findSection(lf.sectionId);
-      return !(sc && sc.noVideos);
-    });
-    if(!activity.length){
-      feed.innerHTML = `<div class="home-feed-empty">Nothing yet — topics you watch and things you search for will show up here.</div>`;
-      feedArrowLeft && feedArrowLeft.classList.add('hidden');
-      feedArrowRight && feedArrowRight.classList.add('hidden');
-      return;
-    }
-    const WATCH_ICON = '<path d="M7 5v14l12-7z"/>';
-    const SEARCH_ICON = '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>';
-    feed.innerHTML = activity.slice(0,20).map((a,i)=>{
-      let thumbHTML = '';
-      if(a.type === 'watch' && a.id){
-        const leaf = findLeaf(a.id);
-        const sec = leaf && findSection(leaf.sectionId);
-        const vids = sharedVideos[a.id] || [];
-
-        let pick = vids[0] || null;
-        let prog = null;
-        for(const v of vids){
-          const p = getVideoProgress(progressKey(a.id, v.url));
-          if(p && p.time > 0){ pick = v; prog = p; break; }
-        }
-        let percent = 0;
-        if(prog && prog.duration > 0) percent = Math.min(100, Math.max(0, Math.round((prog.time / prog.duration) * 100)));
-
-        const frameAt = prog && prog.time > 0 ? prog.time.toFixed(1) : '0.5';
-        const imgStyle = sec && sec.img ? `style="background-image:url('${sec.img}')"` : '';
-        const videoTag = pick
-          ? `<video src="${pick.url}#t=${frameAt}" preload="metadata" muted playsinline tabindex="-1"></video>`
-          : '';
-
-        thumbHTML = `<span class="hr-thumb" ${imgStyle}>
-          ${videoTag}
-          <span class="hr-progress-track"><span class="hr-progress-fill" style="width:${percent}%"></span></span>
-        </span>`;
-      }
-      return `
-      <div class="home-row" data-i="${i}">
-        <span class="hr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${a.type==='watch'?WATCH_ICON:SEARCH_ICON}</svg></span>
-        <span class="hr-main">
-          <div class="hr-name">${a.name}</div>
-          <div class="hr-sub">${a.type==='watch' ? 'Watched' : 'Searched'}</div>
-        </span>
-        ${thumbHTML}
-      </div>
-    `;
-    }).join('');
-    feed.querySelectorAll('.home-row').forEach(row=>{
-      row.addEventListener('click', ()=>{
-        const a = activity[+row.dataset.i];
-        if(!a) return;
-        if(a.type === 'watch' && a.id) openCategory(a.id);
-        else runSearch(a.name);
-      });
-    });
-    feed.scrollLeft = 0;
-    updateFeedArrows();
-  }
-
-  const CARD_OPACITY = 0.6;
-
-  function renderTodayGrid(filterText){
-    const q = (filterText||'').trim().toLowerCase();
-    todayGrid.style.setProperty('--card-opacity', CARD_OPACITY);
-    const cards = SECTIONS.filter(s => !s.hidden);
-    const list = cards.filter(c => c.name.toLowerCase().includes(q) || (c.cardName||'').toLowerCase().includes(q));
-    todayGrid.innerHTML = list.map(c => {
-      const count = c.group
-        ? SECTIONS.filter(s => s.group === c.group).reduce((a,s)=>a+s.items.length,0) + ' lessons • Word, Excel, PowerPoint'
-        : (c.noVideos
-            ? c.items.length + ' lessons • PDF'
-            : c.items.reduce((a,it)=>a+sharedVideos[it.id].length,0) + ' videos • ' + c.items.length + ' topics');
-      if(c.flip){
-        const tips = (c.tips||[]).map(t => `<div class="fb-tip"><kbd>${t[0]}</kbd><span>${t[1]}</span></div>`).join('');
-        return `
-      <div class="today-card flip-card" data-id="${c.id}">
-        <div class="flip-inner">
-          <div class="flip-face flip-front">
-            <div class="card-bg" style="background:${c.grad}"></div>
-            ${c.img ? `<div class="card-art" style="background:url('${c.img}') center/cover no-repeat"></div>` : ''}
-            <div class="card-content">
-              <div class="card-eyebrow">${c.cardEyebrow || c.eyebrow}</div>
-              <h3 class="card-headline">${c.cardName || c.name}</h3>
-              <div class="card-count">${count}</div>
-            </div>
-          </div>
-          <div class="flip-face flip-back">
-            <div class="card-bg" style="background:${c.grad}"></div>
-            <div class="fb-head"><strong>${c.cardName || c.pdfTitle}</strong><span>Word • Excel • PowerPoint</span></div>
-            <div class="fb-tips">${tips}</div>
-            <a class="fb-pdf" href="${c.pdf}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open Word PDF</a>
-          </div>
-        </div>
-      </div>`;
-      }
-      return `
-      <div class="today-card" data-id="${c.id}">
-        <div class="card-bg" style="background:${c.grad}"></div>
-            ${c.img ? `<div class="card-art" style="background:url('${c.img}') center/cover no-repeat"></div>` : ''}
-        <div class="card-content">
-          <div class="card-eyebrow">${c.cardEyebrow || c.eyebrow}</div>
-          <h3 class="card-headline">${c.cardName || c.name}</h3>
-          <div class="card-count">${count}</div>
-        </div>
-      </div>`;
-    }).join('') || `<p style="color:var(--ink-soft);">No match for "${q}".</p>`;
-    todayGrid.querySelectorAll('.today-card').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        el.classList.add('pressed');
-        setTimeout(()=> openSection(el.dataset.id), 220);
-      });
-    });
-  }
-
-  function renderOfficeSwitch(){
-    const box = document.getElementById('officeSwitch');
-    if(!box) return;
-    const sec = findSection(currentSection);
-    if(!sec || !sec.group){ box.style.display = 'none'; box.innerHTML = ''; return; }
-    box.style.display = 'flex';
-    box.innerHTML = SECTIONS.filter(s => s.group === sec.group).map(s =>
-      `<button class="os-btn ${s.id===currentSection?'active':''}" data-id="${s.id}">${s.short}</button>`
-    ).join('');
-    box.querySelectorAll('.os-btn').forEach(b => {
-      b.addEventListener('click', ()=>{ if(b.dataset.id !== currentSection) openSection(b.dataset.id); });
-    });
-  }
-
-  function openSection(id){
-    currentSection = id;
-    const sec = findSection(id);
-    document.getElementById('sectionTitle').textContent = sec.name;
-    renderSectionGrid();
-    renderOfficeSwitch();
-    showView('sectionView');
-  }
-  function renderSectionGrid(){
-    const sec = findSection(currentSection);
-    const grid = document.getElementById('sectionGrid');
-    grid.innerHTML = sec.items.map(it => {
-      const n = sharedVideos[it.id].length;
-      return `<div class="topic-row" data-id="${it.id}">
-        <div>
-          <div class="t-name">${it.name}</div>
-          <div class="t-code">${it.code}</div>
-        </div>
-        <div class="t-count">${sec.noVideos ? 'PDF lesson' : n + ' video' + (n===1?'':'s')}</div>
-      </div>`;
-    }).join('');
-    grid.querySelectorAll('.topic-row').forEach(el=>{
-      el.addEventListener('click', ()=> openCategory(el.dataset.id));
-    });
-  }
-  document.getElementById('backBtnSection').addEventListener('click', ()=>showCategories());
-
-  function openCategory(id, fromSidebar){
-    if(id === 'music'){ openMusicPopup(); return; }
-    const c = findLeaf(id);
-    if(!c) return;
-
-    if(fromSidebar && !returningBack && currentCat && currentCat !== id
-       && document.getElementById('detailView').classList.contains('active')){
-      returnStack.push({ id: currentCat, scroll: document.getElementById('frameScreen').scrollTop });
-    }
-
-    currentCat = id;
-    currentSection = c.sectionId;
-    const secForHistory = findSection(c.sectionId);
-    if(!(secForHistory && secForHistory.noVideos)) pushActivity('watch', c.name, id);
-    detailTitle.textContent = c.name;
-    detailCode.textContent = c.code;
-    videoGrid.setAttribute('data-section', c.sectionId);
-    showView('detailView');
-    renderSidebar();
-    renderVideoGrid();
-  }
-  // Categories view
-  function showCategories(q){
-    currentCat = null;
-    currentSection = null;
-
-    // Kapag walang bagong search (Today / Home / Back sa section), linisin ang search bar
-    if(!(q && q.trim())){
-      topSearch.value = '';
-      searchSuggest.classList.remove('open');
-      searchSuggest.innerHTML = '';
-      updateSearchClearBtn();
-    }
-
-    if(q && q.trim()){
-      const hist = getUserData().searchHistory;
-      const clean = q.trim();
-      const i = hist.indexOf(clean);
-      if(i !== -1) hist.splice(i,1);
-      hist.unshift(clean);
-      if(hist.length > 12) hist.length = 12;
-      pushActivity('search', clean);
-    }
-    showView('categoriesView');
-    renderSidebar();
-    renderTodayGrid(q||'');
-    renderHomeFeed();
-  }
-  document.getElementById('backBtn').addEventListener('click', ()=>{
-    if(returnStack.length){
-      const prev = returnStack.pop();
-      returningBack = true;
-      openCategory(prev.id);
-      returningBack = false;
-      requestAnimationFrame(()=>{ document.getElementById('frameScreen').scrollTop = prev.scroll; });
-      return;
-    }
-    if(currentSection) openSection(currentSection); else showCategories();
-  });
-  document.getElementById('homeNav').addEventListener('click', ()=>{ showCategories(); closeSidebar(); });
-  document.getElementById('todayNav').addEventListener('click', ()=>{ showCategories(); closeSidebar(); });
-
-  function renderVideoGrid(){
-    const list = sharedVideos[currentCat];
-    videoGrid.classList.toggle('single-video', list.length === 1);
-    let html = list.map((v,i)=>`
-      <div class="slot">
-        <video src="${v.url}" controls></video>
-        <div class="slot-meta">
-          <span class="fname">${v.name}</span>
-          ${isDev() ? `<button data-i="${i}" class="remove-video">Remove</button>` : ''}
-        </div>
+function renderSidebar(){
+  let html = '';
+  SECTIONS.forEach(sec => {
+    const isOpen = expandedSections.has(sec.id);
+    html += `<div class="side-group toggle" data-toggle="${sec.id}">
+      <span class="side-group-label"><svg class="side-group-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${sec.icon}</svg>${sec.name}</span>
+      <svg class="side-chevron ${isOpen?'open':''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CHEVRON}</svg>
+    </div>`;
+    html += `<div class="side-items ${isOpen?'open':''}" id="items-${sec.id}"><div class="side-items-inner">`;
+    html += sec.items.map(it => `
+      <div class="nav-row ${currentCat===it.id?'selected':''}" data-id="${it.id}">
+        ${it.name}
       </div>
     `).join('');
-    if(isDev()){
-      html += `
-        <div class="slot-empty" id="addVideoSlot">
-          <span class="plus">+</span>
-          <span class="lbl">Add video</span>
-        </div>
-      `;
-    } else if(!list.length){
-      html = `<p style="color:var(--ink-soft);">No videos uploaded for this topic yet.</p>`;
-    }
-    const leafInfo = findLeaf(currentCat);
-    const secInfo = leafInfo && findSection(leafInfo.sectionId);
-    if(secInfo && secInfo.noVideos) html = '';
-    if(secInfo && secInfo.pdf && leafInfo.tables){
-      html += `
-        <div class="slot pdf-slot">
-          <div class="pdf-head">${secInfo.pdfTitle} — ${leafInfo.name}</div>
-          ${leafInfo.tables.map(t => `
-            <div class="lt-block">
-              <div class="lt-title">${t.title}</div>
-              <table class="lt-table">
-                <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
-                <tbody>${t.rows.map(r => `<tr><td><kbd>${r[0]}</kbd></td><td>${r[1]}</td></tr>`).join('')}</tbody>
-              </table>
-            </div>`).join('')}
-          <div class="slot-meta">
-            <span class="fname">${secInfo.pdfTitle}.pdf</span>
-            <a class="pdf-open" href="${secInfo.pdf}" target="_blank" rel="noopener">Open full PDF</a>
-          </div>
-        </div>
-      `;
-    }
-    if(secInfo && secInfo.pdf && leafInfo.page && !leafInfo.tables){
-      const pdfUrl = `${secInfo.pdf}#page=${leafInfo.page}`;
-      html += `
-        <div class="slot pdf-slot">
-          <div class="pdf-head">${secInfo.pdfTitle} — lesson notes</div>
-          <iframe src="${pdfUrl}" title="${leafInfo.name}"></iframe>
-          <div class="slot-meta">
-            <span class="fname">${secInfo.pdfTitle}.pdf</span>
-            <a class="pdf-open" href="${secInfo.pdf}" target="_blank" rel="noopener">Open full PDF</a>
-          </div>
-        </div>
-      `;
-    }
-    videoGrid.innerHTML = html;
-
-    const leafId = currentCat;
-    videoGrid.querySelectorAll('.slot video').forEach((vidEl, i)=>{
-      const v = list[i];
-      if(!v) return;
-      const key = progressKey(leafId, v.url);
-      vidEl.addEventListener('loadedmetadata', ()=>{
-        const prog = getVideoProgress(key);
-        if(prog && prog.time > 2 && prog.duration > 0 && prog.time < prog.duration - 3){
-          vidEl.currentTime = prog.time;
-        }
-      });
-      let lastSave = 0;
-      vidEl.addEventListener('timeupdate', ()=>{
-        const now = Date.now();
-        if(now - lastSave > 2000 && vidEl.duration){
-          lastSave = now;
-          saveVideoProgress(key, vidEl.currentTime, vidEl.duration);
-        }
-      });
-      vidEl.addEventListener('pause', ()=>{
-        if(vidEl.duration) saveVideoProgress(key, vidEl.currentTime, vidEl.duration);
-      });
+    html += `</div></div>`;
+  });
+  sideCatList.innerHTML = html;
+  sideCatList.querySelectorAll('.nav-row').forEach(el=>{
+    el.addEventListener('click', ()=>{ openCategory(el.dataset.id, true); closeSidebar(); });
+  });
+  sideCatList.querySelectorAll('.side-group.toggle').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const id = el.dataset.toggle;
+      if(expandedSections.has(id)) expandedSections.delete(id); else expandedSections.add(id);
+      renderSidebar();
     });
+  });
+}
 
-    if(isDev()){
-      const addSlot = document.getElementById('addVideoSlot');
-      if(addSlot) addSlot.addEventListener('click', ()=> videoInput.click());
-      videoGrid.querySelectorAll('.remove-video').forEach(btn=>{
-        btn.addEventListener('click', (e)=>{
-          e.stopPropagation();
-          const i = +btn.dataset.i;
-          URL.revokeObjectURL(list[i].url);
-          list.splice(i,1);
-          renderVideoGrid();
-          renderSectionGrid();
-        });
-      });
+const feedArrowLeft = document.getElementById('feedArrowLeft');
+const feedArrowRight = document.getElementById('feedArrowRight');
+function scrollHomeFeed(dir){
+  const feed = document.getElementById('homeFeed');
+  if(!feed) return;
+  feed.scrollBy({ left: dir * 250, behavior:'smooth' });
+}
+function updateFeedArrows(){
+  const feed = document.getElementById('homeFeed');
+  if(!feed || !feedArrowLeft || !feedArrowRight) return;
+  const canScroll = feed.scrollWidth > feed.clientWidth + 2;
+  feedArrowLeft.classList.toggle('hidden', !canScroll || feed.scrollLeft <= 2);
+  feedArrowRight.classList.toggle('hidden', !canScroll || feed.scrollLeft + feed.clientWidth >= feed.scrollWidth - 2);
+}
+if(feedArrowLeft) feedArrowLeft.addEventListener('click', ()=> scrollHomeFeed(-1));
+if(feedArrowRight) feedArrowRight.addEventListener('click', ()=> scrollHomeFeed(1));
+document.getElementById('homeFeed') && document.getElementById('homeFeed').addEventListener('scroll', updateFeedArrows);
+
+function youtubeIdFromEmbed(embed){
+  const m = /youtube(?:-nocookie)?\.com\/embed\/([\w-]+)/.exec(embed || '');
+  return m ? m[1] : '';
+}
+
+function renderHomeFeed(){
+  const feed = document.getElementById('homeFeed');
+  if(!feed) return;
+  const activity = ((getUserData() && getUserData().activity) || []).filter(a=>{
+    if(a.type !== 'watch' || !a.id) return true;
+    const lf = findLeaf(a.id);
+    const sc = lf && findSection(lf.sectionId);
+    return !(sc && sc.noVideos);
+  });
+  if(!activity.length){
+    feed.innerHTML = `<div class="home-feed-empty">Nothing yet — topics you watch and things you search for will show up here.</div>`;
+    feedArrowLeft && feedArrowLeft.classList.add('hidden');
+    feedArrowRight && feedArrowRight.classList.add('hidden');
+    return;
+  }
+  const WATCH_ICON = '<path d="M7 5v14l12-7z"/>';
+  const SEARCH_ICON = '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>';
+  feed.innerHTML = activity.slice(0,20).map((a,i)=>{
+    let thumbHTML = '';
+    let subText = a.type === 'watch' ? 'Watched' : 'Searched';
+    if(a.type === 'watch' && a.id){
+      const leaf = findLeaf(a.id);
+      const sec = leaf && findSection(leaf.sectionId);
+      const vids = sharedVideos[a.id] || [];
+
+      let pick = vids[0] || null;
+      let prog = null;
+      for(const v of vids){
+        const p = getVideoProgress(progressKey(a.id, v.url));
+        if(p && p.time > 0){ pick = v; prog = p; break; }
+      }
+      let percent = 0;
+      if(prog && prog.duration > 0) percent = Math.min(100, Math.max(0, Math.round((prog.time / prog.duration) * 100)));
+
+      const ep = bestEmbedProgress(a.id);
+      if(ep){
+        percent = ep.duration > 0 ? Math.min(100, Math.max(0, Math.round((ep.time / ep.duration) * 100))) : 0;
+        subText = percent >= 97 ? 'Watched • Finished' : 'Watched • ' + formatTime(ep.time) + ' / ' + formatTime(ep.duration);
+      }
+
+      const frameAt = prog && prog.time > 0 ? prog.time.toFixed(1) : '0.5';
+      const ytId = (pick && pick.embed) ? youtubeIdFromEmbed(pick.embed) : '';
+      const bgUrl = ytId
+        ? `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`
+        : (sec && sec.img ? sec.img : '');
+      const imgStyle = bgUrl ? `style="background-image:url('${bgUrl}')"` : '';
+      const videoTag = (pick && pick.url && !pick.embed)
+        ? `<video src="${pick.url}#t=${frameAt}" preload="metadata" muted playsinline tabindex="-1"></video>`
+        : '';
+      const progressHTML = ytId
+        ? (ep ? `<span class="hr-progress-track"><span class="hr-progress-fill" style="width:${percent}%;background:#f00"></span></span>` : '')
+        : `<span class="hr-progress-track"><span class="hr-progress-fill" style="width:${percent}%"></span></span>`;
+
+      thumbHTML = `<span class="hr-thumb" ${imgStyle}>
+        ${videoTag}
+        ${progressHTML}
+      </span>`;
     }
+    return `
+    <div class="home-row" data-i="${i}">
+      <span class="hr-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${a.type==='watch'?WATCH_ICON:SEARCH_ICON}</svg></span>
+      <span class="hr-main">
+        <div class="hr-name">${a.name}</div>
+        <div class="hr-sub">${subText}</div>
+      </span>
+      ${thumbHTML}
+    </div>
+  `;
+  }).join('');
+  feed.querySelectorAll('.home-row').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const a = activity[+row.dataset.i];
+      if(!a) return;
+      if(a.type === 'watch' && a.id){
+        autoResume = true;
+        openCategory(a.id);
+        autoResume = false;
+      }
+      else runSearch(a.name);
+    });
+  });
+  feed.scrollLeft = 0;
+  updateFeedArrows();
+}
+
+const CARD_OPACITY = 0.6;
+
+function renderTodayGrid(filterText){
+  const q = (filterText||'').trim().toLowerCase();
+  todayGrid.style.setProperty('--card-opacity', CARD_OPACITY);
+  const cards = SECTIONS.filter(s => !s.hidden);
+  const list = cards.filter(c => c.name.toLowerCase().includes(q) || (c.cardName||'').toLowerCase().includes(q));
+  todayGrid.innerHTML = list.map(c => {
+    const count = c.group
+      ? SECTIONS.filter(s => s.group === c.group).reduce((a,s)=>a+s.items.length,0) + ' lessons • Word, Excel, PowerPoint'
+      : (c.noVideos
+          ? c.items.length + ' lessons • PDF'
+          : c.items.reduce((a,it)=>a+sharedVideos[it.id].length,0) + ' videos • ' + c.items.length + ' topics');
+    if(c.flip){
+      const tips = (c.tips||[]).map(t => `<div class="fb-tip"><kbd>${t[0]}</kbd><span>${t[1]}</span></div>`).join('');
+      return `
+    <div class="today-card flip-card" data-id="${c.id}">
+      <div class="flip-inner">
+        <div class="flip-face flip-front">
+          <div class="card-bg" style="background:${c.grad}"></div>
+          ${c.img ? `<div class="card-art" style="background:url('${c.img}') center/cover no-repeat"></div>` : ''}
+          <div class="card-content">
+            <div class="card-eyebrow">${c.cardEyebrow || c.eyebrow}</div>
+            <h3 class="card-headline">${c.cardName || c.name}</h3>
+            <div class="card-count">${count}</div>
+          </div>
+        </div>
+        <div class="flip-face flip-back">
+          <div class="card-bg" style="background:${c.grad}"></div>
+          <div class="fb-head"><strong>${c.cardName || c.pdfTitle}</strong><span>Word • Excel • PowerPoint</span></div>
+          <div class="fb-tips">${tips}</div>
+          <a class="fb-pdf" href="${c.pdf}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open Word PDF</a>
+        </div>
+      </div>
+    </div>`;
+    }
+    return `
+    <div class="today-card" data-id="${c.id}">
+      <div class="card-bg" style="background:${c.grad}"></div>
+          ${c.img ? `<div class="card-art" style="background:url('${c.img}') center/cover no-repeat"></div>` : ''}
+      <div class="card-content">
+        <div class="card-eyebrow">${c.cardEyebrow || c.eyebrow}</div>
+        <h3 class="card-headline">${c.cardName || c.name}</h3>
+        <div class="card-count">${count}</div>
+      </div>
+    </div>`;
+  }).join('') || `<p style="color:var(--ink-soft);">No match for "${q}".</p>`;
+  todayGrid.querySelectorAll('.today-card').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      el.classList.add('pressed');
+      setTimeout(()=> openSection(el.dataset.id), 220);
+    });
+  });
+}
+
+function renderOfficeSwitch(){
+  const box = document.getElementById('officeSwitch');
+  if(!box) return;
+  const sec = findSection(currentSection);
+  if(!sec || !sec.group){ box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = 'flex';
+  box.innerHTML = SECTIONS.filter(s => s.group === sec.group).map(s =>
+    `<button class="os-btn ${s.id===currentSection?'active':''}" data-id="${s.id}">${s.short}</button>`
+  ).join('');
+  box.querySelectorAll('.os-btn').forEach(b => {
+    b.addEventListener('click', ()=>{ if(b.dataset.id !== currentSection) openSection(b.dataset.id); });
+  });
+}
+
+function openSection(id){
+  currentSection = id;
+  const sec = findSection(id);
+  document.getElementById('sectionTitle').textContent = sec.name;
+  renderSectionGrid();
+  renderOfficeSwitch();
+  showView('sectionView');
+}
+function renderSectionGrid(){
+  const sec = findSection(currentSection);
+  const grid = document.getElementById('sectionGrid');
+  grid.innerHTML = sec.items.map(it => {
+    const n = sharedVideos[it.id].length;
+    return `<div class="topic-row" data-id="${it.id}">
+      <div>
+        <div class="t-name">${it.name}</div>
+        <div class="t-code">${it.code}</div>
+      </div>
+      <div class="t-count">${sec.noVideos ? 'PDF lesson' : n + ' video' + (n===1?'':'s')}</div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.topic-row').forEach(el=>{
+    el.addEventListener('click', ()=> openCategory(el.dataset.id));
+  });
+}
+document.getElementById('backBtnSection').addEventListener('click', ()=>showCategories());
+
+function openCategory(id, fromSidebar){
+  if(id === 'music'){ openMusicPopup(); return; }
+  const c = findLeaf(id);
+  if(!c) return;
+
+  if(fromSidebar && !returningBack && currentCat && currentCat !== id
+     && document.getElementById('detailView').classList.contains('active')){
+    returnStack.push({ id: currentCat, scroll: document.getElementById('frameScreen').scrollTop });
   }
 
-  /* Save helper */
-  function triggerDownload(file, filename){
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  currentCat = id;
+  currentSection = c.sectionId;
+  const secForHistory = findSection(c.sectionId);
+  if(!(secForHistory && secForHistory.noVideos)) pushActivity('watch', c.name, id);
+  detailTitle.textContent = c.name;
+  detailCode.textContent = c.code;
+  videoGrid.setAttribute('data-section', c.sectionId);
+  showView('detailView');
+  renderSidebar();
+  renderVideoGrid();
+}
+function showCategories(q){
+  currentCat = null;
+  currentSection = null;
+
+  if(!(q && q.trim())){
+    topSearch.value = '';
+    searchSuggest.classList.remove('open');
+    searchSuggest.innerHTML = '';
+    updateSearchClearBtn();
   }
-  function showSaveHelper(kind, codeText){
-    const label = kind === 'video' ? 'video' : 'kanta';
-    const folder = kind === 'video' ? 'videos/' : 'songs/';
-    const libraryName = kind === 'video' ? 'VIDEO_LIBRARY' : 'SONG_LIBRARY';
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;';
-    const box = document.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:16px;max-width:520px;width:100%;padding:22px 24px;font-family:inherit;box-shadow:0 20px 50px rgba(0,0,0,.3);';
-    box.innerHTML = `
-      <h3 style="margin:0 0 10px;font-size:1.05rem;">Na-download na ang ${label} — para permanente:</h3>
-      <p style="font-size:.83rem;color:#6E6E73;margin:0 0 12px;line-height:1.6;">
-        1. Ilipat yung na-download na file papunta sa <b>${folder}</b> folder mo (kasama ng HTML file).<br>
-        2. I-paste itong code sa loob ng <b>${libraryName}</b> sa script.js:
-      </p>
-      <textarea readonly style="width:100%;min-height:110px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;padding:10px;border:1px solid #ddd;border-radius:9px;resize:vertical;box-sizing:border-box;">${codeText}</textarea>
-      <p style="font-size:.76rem;color:#6E6E73;margin:10px 0 0;">3. I-save mo, i-refresh — permanente na.</p>
-      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
-        <button id="saveHelperCopy" style="background:#0071E3;color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">Copy code</button>
-        <button id="saveHelperClose" style="background:#F1F1F3;border:none;border-radius:10px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">Close</button>
+
+  if(q && q.trim()){
+    const hist = getUserData().searchHistory;
+    const clean = q.trim();
+    const i = hist.indexOf(clean);
+    if(i !== -1) hist.splice(i,1);
+    hist.unshift(clean);
+    if(hist.length > 12) hist.length = 12;
+    pushActivity('search', clean);
+  }
+  showView('categoriesView');
+  renderSidebar();
+  renderTodayGrid(q||'');
+  renderHomeFeed();
+}
+document.getElementById('backBtn').addEventListener('click', ()=>{
+  if(returnStack.length){
+    const prev = returnStack.pop();
+    returningBack = true;
+    openCategory(prev.id);
+    returningBack = false;
+    requestAnimationFrame(()=>{ document.getElementById('frameScreen').scrollTop = prev.scroll; });
+    return;
+  }
+  if(currentSection) openSection(currentSection); else showCategories();
+});
+document.getElementById('homeNav').addEventListener('click', ()=>{ showCategories(); closeSidebar(); });
+document.getElementById('todayNav').addEventListener('click', ()=>{ showCategories(); closeSidebar(); });
+
+function renderVideoGrid(){
+  saveAllWatchProgress();
+  const list = sharedVideos[currentCat];
+  videoGrid.classList.toggle('single-video', list.length === 1);
+  let html = list.map((v,i)=>`
+    <div class="slot">
+      ${v.embed ? prepareEmbed(v.embed, currentCat, i) : `<video src="${v.url}" controls></video>`}
+      <div class="slot-meta">
+        <span class="fname">${v.name}</span>
+        ${isDev() ? `<button data-i="${i}" class="remove-video">Remove</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+  autoResume = false;
+  if(isDev()){
+    html += `
+      <div class="slot-empty" id="addVideoSlot">
+        <span class="plus">+</span>
+        <span class="lbl">Add video</span>
       </div>
     `;
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    box.querySelector('#saveHelperCopy').addEventListener('click', ()=>{
-      navigator.clipboard.writeText(codeText).then(()=> showToast('Na-copy na ang code!'));
-    });
-    box.querySelector('#saveHelperClose').addEventListener('click', ()=> overlay.remove());
-    overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.remove(); });
+  } else if(!list.length){
+    html = `<p style="color:var(--ink-soft);">No videos uploaded for this topic yet.</p>`;
   }
+  const leafInfo = findLeaf(currentCat);
+  const secInfo = leafInfo && findSection(leafInfo.sectionId);
+  if(secInfo && secInfo.noVideos) html = '';
+  if(secInfo && secInfo.pdf && leafInfo.tables){
+    html += `
+      <div class="slot pdf-slot">
+        <div class="pdf-head">${secInfo.pdfTitle} — ${leafInfo.name}</div>
+        ${leafInfo.tables.map(t => `
+          <div class="lt-block">
+            <div class="lt-title">${t.title}</div>
+            <table class="lt-table">
+              <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+              <tbody>${t.rows.map(r => `<tr><td><kbd>${r[0]}</kbd></td><td>${r[1]}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>`).join('')}
+        <div class="slot-meta">
+          <span class="fname">${secInfo.pdfTitle}.pdf</span>
+          <a class="pdf-open" href="${secInfo.pdf}" target="_blank" rel="noopener">Open full PDF</a>
+        </div>
+      </div>
+    `;
+  }
+  if(secInfo && secInfo.pdf && leafInfo.page && !leafInfo.tables){
+    const pdfUrl = `${secInfo.pdf}#page=${leafInfo.page}`;
+    html += `
+      <div class="slot pdf-slot">
+        <div class="pdf-head">${secInfo.pdfTitle} — lesson notes</div>
+        <iframe src="${pdfUrl}" title="${leafInfo.name}"></iframe>
+        <div class="slot-meta">
+          <span class="fname">${secInfo.pdfTitle}.pdf</span>
+          <a class="pdf-open" href="${secInfo.pdf}" target="_blank" rel="noopener">Open full PDF</a>
+        </div>
+      </div>
+    `;
+  }
+  videoGrid.innerHTML = html;
+  attachEmbedPlayers(currentCat);
 
-  videoInput.addEventListener('change', ()=>{
-    const f = videoInput.files[0];
-    if(!f || !isDev()) return;
-    sharedVideos[currentCat].push({ name:f.name, url:URL.createObjectURL(f) });
-    videoInput.value = '';
-    renderVideoGrid();
+  const leafId = currentCat;
+  videoGrid.querySelectorAll('.slot video').forEach((vidEl)=>{
+    const v = list.find(x => !x.embed && x.url === vidEl.getAttribute('src'));
+    if(!v) return;
+    const key = progressKey(leafId, v.url);
+    vidEl.addEventListener('loadedmetadata', ()=>{
+      const prog = getVideoProgress(key);
+      if(prog && prog.time > 2 && prog.duration > 0 && prog.time < prog.duration - 3){
+        vidEl.currentTime = prog.time;
+      }
+    });
+    let lastSave = 0;
+    vidEl.addEventListener('timeupdate', ()=>{
+      const now = Date.now();
+      if(now - lastSave > 2000 && vidEl.duration){
+        lastSave = now;
+        saveVideoProgress(key, vidEl.currentTime, vidEl.duration);
+      }
+    });
+    vidEl.addEventListener('pause', ()=>{
+      if(vidEl.duration) saveVideoProgress(key, vidEl.currentTime, vidEl.duration);
+    });
+  });
 
+  if(isDev()){
+    const addSlot = document.getElementById('addVideoSlot');
+    if(addSlot) addSlot.addEventListener('click', ()=> videoInput.click());
+    videoGrid.querySelectorAll('.remove-video').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const i = +btn.dataset.i;
+        if(list[i].url) URL.revokeObjectURL(list[i].url);
+        list.splice(i,1);
+        renderVideoGrid();
+        renderSectionGrid();
+      });
+    });
+  }
+}
+
+function triggerDownload(file, filename){
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 4000);
+}
+function showSaveHelper(kind, codeText){
+  const label = kind === 'video' ? 'video' : 'kanta';
+  const folder = kind === 'video' ? 'videos/' : 'songs/';
+  const libraryName = kind === 'video' ? 'VIDEO_LIBRARY' : 'SONG_LIBRARY';
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:16px;max-width:520px;width:100%;padding:22px 24px;font-family:inherit;box-shadow:0 20px 50px rgba(0,0,0,.3);';
+  box.innerHTML = `
+    <h3 style="margin:0 0 10px;font-size:1.05rem;">Na-download na ang ${label} — para permanente:</h3>
+    <p style="font-size:.83rem;color:#6E6E73;margin:0 0 12px;line-height:1.6;">
+      1. Ilipat yung na-download na file papunta sa <b>${folder}</b> folder mo (kasama ng HTML file).<br>
+      2. I-paste itong code sa loob ng <b>${libraryName}</b> sa script.js:
+    </p>
+    <textarea readonly style="width:100%;min-height:110px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;padding:10px;border:1px solid #ddd;border-radius:9px;resize:vertical;box-sizing:border-box;">${codeText}</textarea>
+    <p style="font-size:.76rem;color:#6E6E73;margin:10px 0 0;">3. I-save mo, i-refresh — permanente na.</p>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+      <button id="saveHelperCopy" style="background:#0071E3;color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">Copy code</button>
+      <button id="saveHelperClose" style="background:#F1F1F3;border:none;border-radius:10px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">Close</button>
+    </div>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  box.querySelector('#saveHelperCopy').addEventListener('click', ()=>{
+    navigator.clipboard.writeText(codeText).then(()=> showToast('Na-copy na ang code!'));
+  });
+  box.querySelector('#saveHelperClose').addEventListener('click', ()=> overlay.remove());
+  overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.remove(); });
+}
+
+videoInput.addEventListener('change', ()=>{
+  const f = videoInput.files[0];
+  if(!f || !isDev()) return;
+  sharedVideos[currentCat].push({ name:f.name, url:URL.createObjectURL(f), embed:'' });
+  videoInput.value = '';
+  renderVideoGrid();
+
+  triggerDownload(f, f.name);
+  const titleGuess = f.name.replace(/\.[^.]+$/, '');
+  const code = `  { name:'${titleGuess}', src:'videos/${f.name}' },`;
+  showSaveHelper('video', code);
+});
+
+const topSearch = document.getElementById('topSearch');
+const searchSuggest = document.getElementById('searchSuggest');
+const CLOCK_ICON = '<path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/>';
+const SEARCH_ICON = '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>';
+
+function runSearch(q){
+  showCategories(q);
+  searchSuggest.classList.remove('open');
+  updateSearchClearBtn();
+}
+function pickLeaf(leaf){
+  topSearch.value = leaf.name;
+  openCategory(leaf.id, true);
+  searchSuggest.classList.remove('open');
+  updateSearchClearBtn();
+}
+function renderSuggestions(){
+  const q = topSearch.value.trim().toLowerCase();
+  if(!q){ searchSuggest.classList.remove('open'); searchSuggest.innerHTML=''; return; }
+  const hist = (getUserData() ? getUserData().searchHistory : []) || [];
+  const histMatches = hist.filter(h => h.toLowerCase().includes(q)).slice(0,5);
+  const usedNames = new Set(histMatches.map(h=>h.toLowerCase()));
+  const leafMatches = LEAVES.filter(l => l.name.toLowerCase().includes(q) && !usedNames.has(l.name.toLowerCase())).slice(0,8);
+  if(!histMatches.length && !leafMatches.length){ searchSuggest.classList.remove('open'); searchSuggest.innerHTML=''; return; }
+  let html = '';
+  histMatches.forEach(h => {
+    html += `<div class="suggest-item" data-hist="${h.replace(/"/g,'&quot;')}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CLOCK_ICON}</svg>
+      <span>${h}</span>
+    </div>`;
+  });
+  leafMatches.forEach(l => {
+    html += `<div class="suggest-item" data-leaf="${l.id}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${SEARCH_ICON}</svg>
+      <span>${l.name}</span>
+    </div>`;
+  });
+  searchSuggest.innerHTML = html;
+  searchSuggest.classList.add('open');
+  searchSuggest.querySelectorAll('[data-hist]').forEach(el=>{
+    el.addEventListener('click', ()=>{ topSearch.value = el.dataset.hist; runSearch(el.dataset.hist); });
+  });
+  searchSuggest.querySelectorAll('[data-leaf]').forEach(el=>{
+    el.addEventListener('click', ()=> pickLeaf(findLeaf(el.dataset.leaf)));
+  });
+}
+const topSearchClear = document.getElementById('topSearchClear');
+function updateSearchClearBtn(){
+  topSearchClear.style.display = topSearch.value ? 'flex' : 'none';
+}
+topSearch.addEventListener('input', ()=>{
+  if(document.getElementById('categoriesView').classList.contains('active')){
+    renderTodayGrid(topSearch.value);
+  }
+  renderSuggestions();
+  updateSearchClearBtn();
+});
+topSearch.addEventListener('focus', renderSuggestions);
+topSearch.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') runSearch(topSearch.value); });
+document.getElementById('topSearchBtn').addEventListener('click', ()=> runSearch(topSearch.value));
+topSearchClear.addEventListener('click', ()=>{
+  topSearch.value = '';
+  updateSearchClearBtn();
+  renderSuggestions();
+  if(document.getElementById('categoriesView').classList.contains('active')) renderTodayGrid('');
+  topSearch.focus();
+});
+document.addEventListener('click', (e)=>{
+  if(!topSearch.contains(e.target) && !searchSuggest.contains(e.target)) searchSuggest.classList.remove('open');
+});
+
+const addSongBtn = document.getElementById('addSongBtn');
+const songInput = document.getElementById('songInput');
+const songList = document.getElementById('songList');
+const songSearch = document.getElementById('songSearch');
+
+addSongBtn.addEventListener('click', ()=>{ if(isDev()) songInput.click(); });
+songInput.addEventListener('change', ()=>{
+  if(!isDev()) return;
+  const codeLines = [];
+  Array.from(songInput.files).forEach(f=>{
+    sharedSongs.push({ name:f.name, url:URL.createObjectURL(f) });
     triggerDownload(f, f.name);
     const titleGuess = f.name.replace(/\.[^.]+$/, '');
-    const code = `  { name:'${titleGuess}', src:'videos/${f.name}' },`;
-    showSaveHelper('video', code);
+    codeLines.push(`  { name:'${titleGuess}', src:'songs/${f.name}' },`);
   });
+  songInput.value = '';
+  renderSongList();
+  if(codeLines.length) showSaveHelper('song', codeLines.join('\n'));
+});
+songSearch.addEventListener('input', renderSongList);
+songSearch.addEventListener('click', (e)=> e.stopPropagation());
+addSongBtn.addEventListener('click', (e)=> e.stopPropagation());
 
-  /* ================= TOP BAR SEARCH ================= */
-  const topSearch = document.getElementById('topSearch');
-  const searchSuggest = document.getElementById('searchSuggest');
-  const CLOCK_ICON = '<path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/>';
-  const SEARCH_ICON = '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>';
-
-  function runSearch(q){
-    showCategories(q);
-    searchSuggest.classList.remove('open');
-    updateSearchClearBtn();
-  }
-  function pickLeaf(leaf){
-    topSearch.value = leaf.name;
-    openCategory(leaf.id, true);
-    searchSuggest.classList.remove('open');
-    updateSearchClearBtn();
-  }
-  function renderSuggestions(){
-    const q = topSearch.value.trim().toLowerCase();
-    if(!q){ searchSuggest.classList.remove('open'); searchSuggest.innerHTML=''; return; }
-    const hist = (getUserData() ? getUserData().searchHistory : []) || [];
-    const histMatches = hist.filter(h => h.toLowerCase().includes(q)).slice(0,5);
-    const usedNames = new Set(histMatches.map(h=>h.toLowerCase()));
-    const leafMatches = LEAVES.filter(l => l.name.toLowerCase().includes(q) && !usedNames.has(l.name.toLowerCase())).slice(0,8);
-    if(!histMatches.length && !leafMatches.length){ searchSuggest.classList.remove('open'); searchSuggest.innerHTML=''; return; }
-    let html = '';
-    histMatches.forEach(h => {
-      html += `<div class="suggest-item" data-hist="${h.replace(/"/g,'&quot;')}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CLOCK_ICON}</svg>
-        <span>${h}</span>
-      </div>`;
+function renderSongList(){
+  addSongBtn.style.display = isDev() ? 'inline-flex' : 'none';
+  const songs = sharedSongs;
+  const q = songSearch.value.trim().toLowerCase();
+  const filtered = songs.map((s,i)=>({...s, i})).filter(s => s.name.toLowerCase().includes(q));
+  if(!songs.length){ songList.innerHTML = `<div class="song-empty">${isDev() ? 'No songs yet. Tap + Add song to attach local audio files.' : 'No songs added yet.'}</div>`; return; }
+  if(!filtered.length){ songList.innerHTML = `<div class="song-empty">No match for "${q}".</div>`; return; }
+  songList.innerHTML = filtered.map(s => `
+    <div class="song-row ${playingIndex===s.i?'playing':''}" data-i="${s.i}">
+      <span class="play-dot">
+        ${playingIndex===s.i
+          ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>'}
+      </span>
+      <span class="song-info">
+        <div class="song-name">${s.name}</div>
+        <div class="song-status">${playingIndex===s.i ? 'Playing' : 'Tap to play'}</div>
+      </span>
+      ${isDev() ? `<button data-remove="${s.i}" class="remove-song" style="background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:.75rem;">Remove</button>` : ''}
+    </div>
+  `).join('');
+  songList.querySelectorAll('.song-row').forEach(row=>{
+    row.addEventListener('click', (e)=>{
+      if(e.target.closest('.remove-song')) return;
+      toggleSong(+row.dataset.i);
     });
-    leafMatches.forEach(l => {
-      html += `<div class="suggest-item" data-leaf="${l.id}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${SEARCH_ICON}</svg>
-        <span>${l.name}</span>
-      </div>`;
-    });
-    searchSuggest.innerHTML = html;
-    searchSuggest.classList.add('open');
-    searchSuggest.querySelectorAll('[data-hist]').forEach(el=>{
-      el.addEventListener('click', ()=>{ topSearch.value = el.dataset.hist; runSearch(el.dataset.hist); });
-    });
-    searchSuggest.querySelectorAll('[data-leaf]').forEach(el=>{
-      el.addEventListener('click', ()=> pickLeaf(findLeaf(el.dataset.leaf)));
-    });
-  }
-  const topSearchClear = document.getElementById('topSearchClear');
-  function updateSearchClearBtn(){
-    topSearchClear.style.display = topSearch.value ? 'flex' : 'none';
-  }
-  topSearch.addEventListener('input', ()=>{
-    if(document.getElementById('categoriesView').classList.contains('active')){
-      renderTodayGrid(topSearch.value);
-    }
-    renderSuggestions();
-    updateSearchClearBtn();
   });
-  topSearch.addEventListener('focus', renderSuggestions);
-  topSearch.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') runSearch(topSearch.value); });
-  document.getElementById('topSearchBtn').addEventListener('click', ()=> runSearch(topSearch.value));
-  topSearchClear.addEventListener('click', ()=>{
-    topSearch.value = '';
-    updateSearchClearBtn();
-    renderSuggestions();
-    if(document.getElementById('categoriesView').classList.contains('active')) renderTodayGrid('');
-    topSearch.focus();
-  });
-  document.addEventListener('click', (e)=>{
-    if(!topSearch.contains(e.target) && !searchSuggest.contains(e.target)) searchSuggest.classList.remove('open');
-  });
-
-  /* ================= MUSIC (song list, rendered inside the popup) ================= */
-  const addSongBtn = document.getElementById('addSongBtn');
-  const songInput = document.getElementById('songInput');
-  const songList = document.getElementById('songList');
-  const songSearch = document.getElementById('songSearch');
-
-  addSongBtn.addEventListener('click', ()=>{ if(isDev()) songInput.click(); });
-  songInput.addEventListener('change', ()=>{
-    if(!isDev()) return;
-    const codeLines = [];
-    Array.from(songInput.files).forEach(f=>{
-      sharedSongs.push({ name:f.name, url:URL.createObjectURL(f) });
-      triggerDownload(f, f.name);
-      const titleGuess = f.name.replace(/\.[^.]+$/, '');
-      codeLines.push(`  { name:'${titleGuess}', src:'songs/${f.name}' },`);
-    });
-    songInput.value = '';
-    renderSongList();
-    if(codeLines.length) showSaveHelper('song', codeLines.join('\n'));
-  });
-  songSearch.addEventListener('input', renderSongList);
-  songSearch.addEventListener('click', (e)=> e.stopPropagation());
-  addSongBtn.addEventListener('click', (e)=> e.stopPropagation());
-
-  function renderSongList(){
-    addSongBtn.style.display = isDev() ? 'inline-flex' : 'none';
-    const songs = sharedSongs;
-    const q = songSearch.value.trim().toLowerCase();
-    const filtered = songs.map((s,i)=>({...s, i})).filter(s => s.name.toLowerCase().includes(q));
-    if(!songs.length){ songList.innerHTML = `<div class="song-empty">${isDev() ? 'No songs yet. Tap + Add song to attach local audio files.' : 'No songs added yet.'}</div>`; return; }
-    if(!filtered.length){ songList.innerHTML = `<div class="song-empty">No match for "${q}".</div>`; return; }
-    songList.innerHTML = filtered.map(s => `
-      <div class="song-row ${playingIndex===s.i?'playing':''}" data-i="${s.i}">
-        <span class="play-dot">
-          ${playingIndex===s.i
-            ? '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>'
-            : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>'}
-        </span>
-        <span class="song-info">
-          <div class="song-name">${s.name}</div>
-          <div class="song-status">${playingIndex===s.i ? 'Playing' : 'Tap to play'}</div>
-        </span>
-        ${isDev() ? `<button data-remove="${s.i}" class="remove-song" style="background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:.75rem;">Remove</button>` : ''}
-      </div>
-    `).join('');
-    songList.querySelectorAll('.song-row').forEach(row=>{
-      row.addEventListener('click', (e)=>{
-        if(e.target.closest('.remove-song')) return;
-        toggleSong(+row.dataset.i);
+  if(isDev()){
+    songList.querySelectorAll('.remove-song').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const i = +btn.dataset.remove;
+        if(playingIndex===i){ audioEl.pause(); playingIndex=null; }
+        else if(playingIndex!==null && playingIndex>i){ playingIndex--; }
+        URL.revokeObjectURL(sharedSongs[i].url);
+        sharedSongs.splice(i,1);
+        renderSongList();
       });
     });
-    if(isDev()){
-      songList.querySelectorAll('.remove-song').forEach(btn=>{
-        btn.addEventListener('click', (e)=>{
-          e.stopPropagation();
-          const i = +btn.dataset.remove;
-          if(playingIndex===i){ audioEl.pause(); playingIndex=null; }
-          else if(playingIndex!==null && playingIndex>i){ playingIndex--; }
-          URL.revokeObjectURL(sharedSongs[i].url);
-          sharedSongs.splice(i,1);
-          renderSongList();
-        });
-      });
-    }
   }
-  function toggleSong(i){
-    if(playingIndex === i){ audioEl.pause(); playingIndex = null; }
-    else { audioEl.src = sharedSongs[i].url; audioEl.play(); playingIndex = i; }
+}
+function toggleSong(i){
+  if(playingIndex === i){ audioEl.pause(); playingIndex = null; }
+  else { audioEl.src = sharedSongs[i].url; audioEl.play(); playingIndex = i; }
+  renderSongList();
+}
+audioEl.addEventListener('ended', ()=>{ playingIndex = null; renderSongList(); });
+
+function pauseMusicForVideo(e){
+  if(e.target && e.target.tagName === 'VIDEO' && !audioEl.paused){
+    audioEl.pause();
+    playingIndex = null;
     renderSongList();
   }
-  audioEl.addEventListener('ended', ()=>{ playingIndex = null; renderSongList(); });
+}
+document.addEventListener('play', pauseMusicForVideo, true);
+document.addEventListener('playing', pauseMusicForVideo, true);
 
-  function pauseMusicForVideo(e){
-    if(e.target && e.target.tagName === 'VIDEO' && !audioEl.paused){
-      audioEl.pause();
-      playingIndex = null;
-      renderSongList();
-    }
-  }
-  document.addEventListener('play', pauseMusicForVideo, true);
-  document.addEventListener('playing', pauseMusicForVideo, true);
-
-  /* ================= SETTINGS ================= */
-  document.getElementById('settingsBtn').addEventListener('click', openSettings);
-  document.getElementById('backBtnSettings').addEventListener('click', ()=> showView(lastMainView));
-  document.getElementById('backBtnAbout').addEventListener('click', ()=> showView(lastMainView));
-  document.querySelectorAll('.about-tab').forEach(tab=>{
-    tab.addEventListener('click', ()=>{
-      document.querySelectorAll('.about-tab').forEach(t=>t.classList.toggle('active', t===tab));
-      const map = {products:'aboutProducts', company:'aboutCompany', news:'aboutNews'};
-      document.querySelectorAll('.about-panel').forEach(p=>{
-        p.classList.toggle('active', p.id === map[tab.dataset.tab]);
-      });
+document.getElementById('settingsBtn').addEventListener('click', openSettings);
+document.getElementById('backBtnSettings').addEventListener('click', ()=> showView(lastMainView));
+document.getElementById('backBtnAbout').addEventListener('click', ()=> showView(lastMainView));
+document.querySelectorAll('.about-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.about-tab').forEach(t=>t.classList.toggle('active', t===tab));
+    const map = {products:'aboutProducts', company:'aboutCompany', news:'aboutNews'};
+    document.querySelectorAll('.about-panel').forEach(p=>{
+      p.classList.toggle('active', p.id === map[tab.dataset.tab]);
     });
   });
-  function openSettings(){
-    showView('settingsView');
-  }
-  document.querySelectorAll('.gs-row[data-row]').forEach(row=>{
-    row.querySelector('.gs-row-head').addEventListener('click', ()=>{
-      row.classList.toggle('open');
-    });
+});
+function openSettings(){
+  showView('settingsView');
+}
+document.querySelectorAll('.gs-row[data-row]').forEach(row=>{
+  row.querySelector('.gs-row-head').addEventListener('click', ()=>{
+    row.classList.toggle('open');
   });
+});
 
-  /* ================= HOMEPAGE BACKGROUND SLIDESHOW ================= */
-  const BG_IMAGES = [
-    'assets/bg-photo-1.jpg',
-    'assets/bg-photo-2.jpg',
-    'assets/bg-photo-3.jpg',
-    'assets/bg-photo-4.jpg',
-    'assets/bg-photo-5.jpg',
-    'assets/bg-photo-6.jpg',
-  ];
-  const BG_INTERVAL = 6000;
-  let bgIndex = 0;
-  let bgShowingA = true;
-  let bgTimer = null;
-  let bgHideTimer = null;
-  const bgSlideA = document.getElementById('catBgSlideA');
-  const bgSlideB = document.getElementById('catBgSlideB');
-  const bgProgressFill = document.getElementById('bgProgressFill');
+const BG_IMAGES = [
+  'assets/bg-photo-1.jpg',
+  'assets/bg-photo-2.jpg',
+  'assets/bg-photo-3.jpg',
+  'assets/bg-photo-4.jpg',
+  'assets/bg-photo-5.jpg',
+  'assets/bg-photo-6.jpg',
+];
+const BG_INTERVAL = 6000;
+let bgIndex = 0;
+let bgShowingA = true;
+let bgTimer = null;
+let bgHideTimer = null;
+const bgSlideA = document.getElementById('catBgSlideA');
+const bgSlideB = document.getElementById('catBgSlideB');
+const bgProgressFill = document.getElementById('bgProgressFill');
 
-  function resetBgProgress(){
-    if(!bgProgressFill) return;
-    bgProgressFill.style.transition = 'none';
-    bgProgressFill.style.width = '0%';
-    void bgProgressFill.offsetWidth;
-    bgProgressFill.style.transition = `width ${BG_INTERVAL}ms linear`;
-    bgProgressFill.style.width = '100%';
-  }
+function resetBgProgress(){
+  if(!bgProgressFill) return;
+  bgProgressFill.style.transition = 'none';
+  bgProgressFill.style.width = '0%';
+  void bgProgressFill.offsetWidth;
+  bgProgressFill.style.transition = `width ${BG_INTERVAL}ms linear`;
+  bgProgressFill.style.width = '100%';
+}
 
-  function goToBg(i){
-    if(!BG_IMAGES.length) return;
-    bgIndex = (i + BG_IMAGES.length) % BG_IMAGES.length;
-    const img = BG_IMAGES[bgIndex];
-    const nextEl = bgShowingA ? bgSlideB : bgSlideA;
-    const curEl = bgShowingA ? bgSlideA : bgSlideB;
-    nextEl.style.backgroundImage = `url('${img}')`;
-    nextEl.style.zIndex = 2;
-    curEl.style.zIndex = 1;
-    void nextEl.offsetWidth;
-    nextEl.classList.add('active');
-    clearTimeout(bgHideTimer);
-    bgHideTimer = setTimeout(()=> curEl.classList.remove('active'), 1200);
-    bgShowingA = !bgShowingA;
-  }
-  function startBgAuto(){
-    clearInterval(bgTimer);
-    resetBgProgress();
-    bgTimer = setInterval(()=>{ goToBg(bgIndex + 1); resetBgProgress(); }, BG_INTERVAL);
-  }
-  if(bgSlideA && bgSlideB && BG_IMAGES.length){
-    bgSlideA.style.backgroundImage = `url('${BG_IMAGES[0]}')`;
-    document.getElementById('bgArrowLeft').addEventListener('click', ()=>{ goToBg(bgIndex - 1); startBgAuto(); });
-    document.getElementById('bgArrowRight').addEventListener('click', ()=>{ goToBg(bgIndex + 1); startBgAuto(); });
-    startBgAuto();
-  }
+function goToBg(i){
+  if(!BG_IMAGES.length) return;
+  bgIndex = (i + BG_IMAGES.length) % BG_IMAGES.length;
+  const img = BG_IMAGES[bgIndex];
+  const nextEl = bgShowingA ? bgSlideB : bgSlideA;
+  const curEl = bgShowingA ? bgSlideA : bgSlideB;
+  nextEl.style.backgroundImage = `url('${img}')`;
+  nextEl.style.zIndex = 2;
+  curEl.style.zIndex = 1;
+  void nextEl.offsetWidth;
+  nextEl.classList.add('active');
+  clearTimeout(bgHideTimer);
+  bgHideTimer = setTimeout(()=> curEl.classList.remove('active'), 1200);
+  bgShowingA = !bgShowingA;
+}
+function startBgAuto(){
+  clearInterval(bgTimer);
+  resetBgProgress();
+  bgTimer = setInterval(()=>{ goToBg(bgIndex + 1); resetBgProgress(); }, BG_INTERVAL);
+}
+if(bgSlideA && bgSlideB && BG_IMAGES.length){
+  bgSlideA.style.backgroundImage = `url('${BG_IMAGES[0]}')`;
+  document.getElementById('bgArrowLeft').addEventListener('click', ()=>{ goToBg(bgIndex - 1); startBgAuto(); });
+  document.getElementById('bgArrowRight').addEventListener('click', ()=>{ goToBg(bgIndex + 1); startBgAuto(); });
+  startBgAuto();
+}
 
-  /* ================= MS WORD FLIP CARD ================= */
-  const FLIP_INTERVAL = 6000;
-  setInterval(()=>{
-    const card = document.querySelector('.flip-card');
-    const home = document.getElementById('categoriesView');
-    if(!card || !home || !home.classList.contains('active')) return;
-    if(card.matches(':hover')) return;
-    card.classList.toggle('flipped');
-  }, FLIP_INTERVAL);
+const FLIP_INTERVAL = 6000;
+setInterval(()=>{
+  const card = document.querySelector('.flip-card');
+  const home = document.getElementById('categoriesView');
+  if(!card || !home || !home.classList.contains('active')) return;
+  if(card.matches(':hover')) return;
+  card.classList.toggle('flipped');
+}, FLIP_INTERVAL);
 
-  logInAs('Guest');
+logInAs('Guest');
 
-/* Ring gallery */
 (function () {
   var EXT = 'svg';
   var COUNT = 6;
@@ -1163,8 +1287,6 @@
     'Microsoft PowerPoint': 'word'
   };
 
-  /* Pangalan at description ng bawat picture.
-     Ang pagkakasunod ay ayon sa numero ng file: hw-1.svg ... hw-6.svg */
   function ph() {
     var a = [];
     for (var i = 1; i <= 6; i++) a.push({ name: 'Name ' + i, desc: 'Description ' + i });
@@ -1270,7 +1392,6 @@
   new MutationObserver(sync).observe(title, { childList: true, characterData: true, subtree: true });
   new MutationObserver(sync).observe(view, { attributes: true, attributeFilter: ['class'] });
 
-  /* ---------- info popup ---------- */
   if (!document.getElementById('ringInfoCss')) {
     var cs = document.createElement('style');
     cs.id = 'ringInfoCss';
@@ -1318,7 +1439,6 @@
     if (!view.classList.contains('active')) closeInfo();
   }).observe(view, { attributes: true, attributeFilter: ['class'] });
 
-  /* ---------- input ---------- */
   function pagePuwedeMagScroll() { return frame && frame.scrollHeight > frame.clientHeight + 2; }
 
   block.addEventListener('wheel', function (e) {
@@ -1350,7 +1470,6 @@
   });
   block.addEventListener('pointercancel', endDrag);
 
-  /* ---------- render ---------- */
   function frameLoop() {
     if (view.classList.contains('active') && cards.length) {
       if (!dragging && !info.classList.contains('open')) target += AUTO_SPEED;
@@ -1375,14 +1494,12 @@
   sync();
 })();
 
-/* Sidebar and copyright */
 (function(){
   var frame = document.getElementById('deviceFrame');
   var sb = document.getElementById('sidebar');
   var bd = document.getElementById('sidebarBackdrop');
   if(!frame) return;
 
-  // ---------- CSS ----------
   if(!document.getElementById('teamYeyCss')){
     var st = document.createElement('style');
     st.id = 'teamYeyCss';
@@ -1392,7 +1509,6 @@
       'body[data-theme="dim"] .copyright-mark{filter:contrast(1.1765) invert(1) hue-rotate(180deg);}',
       '.device-frame[data-device="watch"] .copyright-mark{font-size:.5rem;padding:3px 8px;}',
       '@media(max-width:640px){.device-frame > .sidebar{position:absolute;width:100%;}.device-frame > .sidebar-backdrop{position:absolute;}}',
-      /* lesson shortcut tables (Excel / PowerPoint) */
       '.lt-block{margin:6px 2px 16px;}',
       '.lt-title{font-size:.9rem;font-weight:800;margin:0 0 8px;color:var(--ink);}',
       '.lt-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:.82rem;}',
@@ -1405,13 +1521,11 @@
     document.head.appendChild(st);
   }
 
-  // ---------- SIDEBAR ----------
   if(sb && bd){ frame.appendChild(bd); frame.appendChild(sb); }
 
   var _showView = showView;
   showView = function(id){ closeSidebar(); _showView(id); };
 
-  // ---------- COPYRIGHT ----------
   var TEXT  = 'Copyright \u2022 2026 TEAM YEY';
   var STYLE = 'position:absolute!important;left:50%!important;bottom:10px!important;' +
               'transform:translateX(-50%)!important;z-index:2147483647!important;' +
@@ -1447,9 +1561,7 @@
   setInterval(ensure, 500);
 })();
 
-/* Meet the Creators */
 (function(){
-  /* Creators info */
   var DEVELOPERS = [
     { name:'Jake A. Ravano',         role:'Developer', photo:'assets/devs/jake.jpg', pos:'45%',     gmail:'jakeravano6@gmail.com', facebook:'https://www.facebook.com/jakeravano09' },
     { name:'Khea W. Sta. Maria',     role:'UI Designer', photo:'assets/devs/khea.jpg', pos:'15%',     gmail:'stamariakhea@gmail.com', facebook:'https://www.facebook.com/stamariakhea' },
@@ -1469,7 +1581,6 @@
   function esc(t){ return String(t).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function initials(n){ return n.replace(/\./g,'').split(/\s+/).filter(function(w){ return /^[A-Za-z]/.test(w) && w !== 'Jr'; }).slice(0,2).map(function(w){ return w[0].toUpperCase(); }).join(''); }
 
-  /* Background removal: the photo background is removed so only the person is left, and the arch color shows behind */
   var TOL = 42, STEP = 14, HALO = 75;
 
   function dist(d, i, r){
@@ -1606,7 +1717,6 @@
     if(frame) frame.scrollTop = 0;
   });
 
-  /* Magnetic button effect */
   var arrow = btn.querySelector('.dev-toggle-arrow');
   var RANGE = 90, PULL = 0.35;
   function resetMagnet(){
@@ -1631,9 +1741,6 @@
   document.addEventListener('mouseleave', resetMagnet);
 })();
 
-/* ================= READ ALOUD (Text-to-Speech) =================
-   I-load pagkatapos ng script.js:  <script src="readaloud.js"></script>
-   ================================================================ */
 (function () {
   'use strict';
 
@@ -1647,7 +1754,7 @@
 
   var OFFICE = { word: 1, excel: 1, ppt: 1 };
 
-  /* ---------- PDF.js sources (local muna, CDN kung wala) ---------- */
+  // local copy first, CDN as fallback
   var CDN = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.2.108/legacy/build/';
   var PDF_SRC = [
     { js: 'lib/pdf.min.mjs', worker: 'lib/pdf.worker.min.mjs' },
@@ -1655,11 +1762,10 @@
   ];
   function absUrl(u) { return new URL(u, document.baseURI).href; }
 
-  /* ---------- CSS ---------- */
   if (!document.getElementById('raPdfCss')) {
     var st = document.createElement('style');
     st.id = 'raPdfCss';
-        st.textContent = [
+    st.textContent = [
       '.pv-wrap{height:560px;overflow:auto;background:#E9ECF1;border-radius:10px;padding:10px;position:relative;font-size:.85rem;color:#6E6E73;}',
       '.pv-page{position:relative;margin:0 auto 10px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18);}',
       '.pv-page canvas{display:block;width:100%;height:100%;}',
@@ -1679,7 +1785,6 @@
     document.head.appendChild(st);
   }
 
-  /* ---------- Icons ---------- */
   var I = {
     play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>',
     pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>',
@@ -1691,13 +1796,11 @@
   var $prev = $('raPrev'), $next = $('raNext'), $stop = $('raStop');
   var $count = $('raCount'), $rate = $('raRate'), $voice = $('raVoice');
 
-  /* Alisin ang lumang "Lesson summary" card kung may natira */
   function removeOldSummary() {
     var old = grid.querySelectorAll('.ra-text-card');
     for (var i = 0; i < old.length; i++) old[i].remove();
   }
 
-  /* ---------- Hindi supported ang TTS ---------- */
   if (!synth || typeof SpeechSynthesisUtterance === 'undefined') {
     bar.innerHTML = '<span class="ra-note">Hindi supported ang Read Aloud sa browser na ito.</span>';
     new MutationObserver(function () {
@@ -1706,7 +1809,6 @@
     return;
   }
 
-  /* ---------- Voices ---------- */
   var voices = [];
   function loadVoices() {
     var all = synth.getVoices() || [];
@@ -1727,7 +1829,6 @@
   loadVoices();
   if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = loadVoices;
 
-  /* ---------- Text clean-up para natural pakinggan ---------- */
   var SYM = { '+': 'plus', '-': 'minus', '=': 'equals', '`': 'backtick', '$': 'dollar sign', '%': 'percent', '#': 'number sign',
               '←': 'left arrow', '→': 'right arrow', '↑': 'up arrow', '↓': 'down arrow', '<': 'less than', '>': 'greater than' };
   function spoken(s) {
@@ -1747,7 +1848,7 @@
     return s.replace(/\s+/g, ' ').trim();
   }
 
-  /* Hatiin sa maliliit na piraso (iwas putol ng Chrome sa mahabang text) */
+  // split into short pieces because Chrome cuts off long utterances
   function chunk(text) {
     text = String(text).replace(/\s+/g, ' ').trim();
     if (!text) return [];
@@ -1766,7 +1867,6 @@
     return out;
   }
 
-  /* ================= PDF.js viewer ================= */
   var pdfReady = null;
   function loadPdfJs() {
     if (pdfReady) return pdfReady;
@@ -1893,7 +1993,6 @@
       var t = pages[targetPage - 1];
       if (t) { renderPage(t); wrap.scrollTop = Math.max(0, t.offsetTop - 10); }
     }).catch(function (err) {
-      /* Fallback: ibalik ang dating iframe (hindi na makakapili ng text) */
       console.error('PDF viewer failed:', err, err && err.details);
       wrap.replaceWith(ifr);
       var why;
@@ -1912,7 +2011,6 @@
     });
   }
 
-  /* ================= Selection ================= */
   var lastSel = '';
 
   function getSel() {
@@ -1973,7 +2071,6 @@
       if (!s) return;
       var txt = getSel();
       if (txt) { lastSel = txt; return; }
-      /* nawala ang selection (click sa ibang lugar) = alisin ang naka-save, maliban kung toolbar ang pinindot */
       var ae = document.activeElement;
       if (ae && (bar.contains(ae) || ae === fab)) return;
       lastSel = ''; hideFab();
@@ -1981,7 +2078,6 @@
   });
   grid.addEventListener('scroll', hideFab, true);
 
-  /* ================= Speech ================= */
   var queue = [], queueSource = '', idx = -1;
   var playing = false, paused = false, token = 0, timer = null;
 
@@ -2044,10 +2140,8 @@
     if (!queue.length) { updateUI(); return; }
     speak(0);
   }
-  /* Piniling text lang — hanggang dulo ng pinili */
   function beginSelection(text) { begin(chunk(spoken(text)), text); }
 
-  /* Buong lesson (kapag walang pinili) */
   function lessonText() {
     var title = titleEl ? titleEl.textContent.trim() : '';
     var head = title ? title + '. ' : '';
@@ -2083,7 +2177,6 @@
   $rate.addEventListener('change', function () { if (playing) speak(idx); });
   $voice.addEventListener('change', function () { if (playing) speak(idx); });
 
-  /* ================= Lesson build ================= */
   function build() {
     stop();
     hideFab();
@@ -2101,7 +2194,6 @@
     for (var i = 0; i < slots.length; i++) mountViewer(slots[i]);
   }
 
-  /* childList (direct children lang) — hindi tatamaan ng pagbabago sa loob ng PDF viewer */
   new MutationObserver(build).observe(grid, { childList: true, attributes: true, attributeFilter: ['data-section'] });
 
   new MutationObserver(function () {

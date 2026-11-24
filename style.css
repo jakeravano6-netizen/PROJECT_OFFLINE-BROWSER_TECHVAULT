@@ -891,3 +891,14 @@ body{
   /* Itago ang arrows ng background (tinatakpan nila ang mga card) */
   #categoriesView .cat-main > .bg-arrow{display:none;}
 }
+
+/* =====================================================================
+   YouTube embed (idinagdag para sa mga embed code)
+   ===================================================================== */
+.slot:not(.pdf-slot) iframe{
+  width:100%; height:auto; aspect-ratio:16/9;
+  border:0; border-radius:10px; display:block; background:#0F1620;
+}
+/* Para hindi ma-invert ang YouTube video sa Dark / Dim theme */
+body[data-theme="dark"] .slot:not(.pdf-slot) iframe{filter:invert(1) hue-rotate(180deg);}
+body[data-theme="dim"] .slot:not(.pdf-slot) iframe{filter:contrast(1.1765) invert(1) hue-rotate(180deg);}
