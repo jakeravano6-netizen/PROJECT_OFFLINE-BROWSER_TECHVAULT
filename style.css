@@ -173,8 +173,8 @@
     transform:rotate(45deg);
   }
   .music-popup-head h3{margin:0; font-size:.95rem; font-weight:800; color:var(--ink);}
-  .music-popup .music-toolbar{margin-bottom:0;}
-  .music-popup .song-list{overflow-y:auto; max-height:300px;}
+  .music-popup .music-toolbar{margin-bottom:0; flex-shrink:0;}
+  .music-popup .song-list{overflow-y:auto; max-height:300px; min-height:0; flex:1 1 auto;}
 
   /* ---- Stage + device frame ---- */
   .stage.framed{display:flex; align-items:center; justify-content:center; padding:34px 16px; min-height:calc(100vh - 70px);}
@@ -437,10 +437,15 @@
   .slot-empty .plus{width:30px;height:30px;border-radius:50%; background:#fff; display:flex;align-items:center;justify-content:center; font-size:1.1rem; color:var(--blue); line-height:1;}
 
   .music-toolbar{display:flex; gap:10px; margin-bottom:16px;}
-  .music-search-box{flex:1; display:flex; align-items:center; gap:8px; background:var(--pill-bg); border-radius:12px; padding:9px 12px;}
+  .music-search-box{flex:1; min-width:0; display:flex; align-items:center; gap:8px; background:var(--pill-bg); border-radius:12px; padding:9px 12px;}
   .music-search-box svg{width:14px;height:14px; stroke:var(--ink-soft); flex-shrink:0;}
-  .music-search-box input{border:none; outline:none; background:none; flex:1; font-size:.85rem; color:var(--ink);}
-  .add-song-btn{border:none; background:var(--blue); color:#fff; border-radius:12px; padding:0 16px; font-size:.82rem; font-weight:700; cursor:pointer; white-space:nowrap;}
+  .music-search-box input{border:none; outline:none; background:none; flex:1; min-width:0; font-size:.85rem; color:var(--ink);}
+  .add-song-btn{
+    border:none; background:var(--blue); color:#fff; border-radius:12px;
+    padding:10px 16px; font-size:.82rem; font-weight:700; cursor:pointer;
+    white-space:nowrap; flex-shrink:0;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
   .add-song-btn:hover{opacity:.9;}
   .song-list{display:flex; flex-direction:column; gap:4px;}
   .song-empty{color:var(--ink-soft); font-size:.85rem; text-align:center; padding:30px 10px;}
@@ -797,7 +802,7 @@ body[data-theme="dim"] .dev-arches{filter:contrast(1.1765) invert(1) hue-rotate(
 #settingsView.creators-only .screen-pad{padding-top:24px;}
 #settingsView.creators-only .dev-toggle-wrap{margin-top:0;}
 
-/* Alisin ang Home at Categories sa sidebar */
+/* Categories sa sidebar */
 #homeNav,
 #todayNav{display:none;}
 
@@ -837,11 +842,10 @@ body[data-theme="dim"] .dev-arches{filter:contrast(1.1765) invert(1) hue-rotate(
 
 
 /* =====================================================================
-   FIX: tamang taas sa phone, background na hindi napuputol, mobile top bar
-   (Nasa pinakadulo ng file; huwag ilipat sa itaas)
+    Mobile layout fixes
    ===================================================================== */
 
-/* 1. Tamang taas ng page sa phone (hindi na 100vh - 70px) */
+/* 1. (100vh - 70px) */
 html, body{height:100%; overflow-x:hidden;}
 body{
   display:flex; flex-direction:column;
@@ -856,14 +860,14 @@ body{
   position:absolute; inset:0; width:auto; height:auto; min-height:0;
 }
 
-/* 2. Background na nakapirmi (hindi sumasama sa scroll, walang guhit) */
+/* 2. Background  */
 #categoriesView .cat-shell{position:relative;}
 #categoriesView .cat-main{position:static;}
 #categoriesView .cat-main > .cat-bg{
   position:absolute; inset:0; height:auto; margin:0; z-index:0;
 }
 
-/* 3. Mga arrow ng background: nakapirmi sa gitna ng screen */
+/* 3. arrow of background:  */
 #categoriesView .cat-main > .bg-arrow{
   position:absolute; top:50%; transform:translateY(-50%); margin:0; z-index:3;
 }
@@ -879,7 +883,7 @@ body{
   .global-save-btn{padding:8px 10px;}
   .global-save-btn .btn-label{display:none;}
 
-  /* Ibalik ang Search bar: sa ikalawang hilera */
+  /* Search bar */
   .topbar-search{
     display:block; position:relative; left:auto; top:auto; transform:none;
     order:99; flex:1 0 100%; width:100%; max-width:none; padding:0;
@@ -887,7 +891,7 @@ body{
   }
   .search-suggest{left:0; right:0;}
 
-  /* Music popup: nasa loob ng screen */
+  /* Music popup */
   .music-popup{position:fixed; left:12px; right:12px; top:112px; width:auto; max-height:60vh;}
   .music-popup::before{display:none;}
 
@@ -896,12 +900,29 @@ body{
 }
 
 /* =====================================================================
-   YouTube embed (idinagdag para sa mga embed code)
+   YouTube embed 
    ===================================================================== */
 .slot:not(.pdf-slot) iframe{
   width:100%; height:auto; aspect-ratio:16/9;
   border:0; border-radius:10px; display:block; background:#0F1620;
 }
-/* Para hindi ma-invert ang YouTube video sa Dark / Dim theme */
+/* YouTube video sa Dark / Dim theme */
 body[data-theme="dark"] .slot:not(.pdf-slot) iframe{filter:invert(1) hue-rotate(180deg);}
 body[data-theme="dim"] .slot:not(.pdf-slot) iframe{filter:contrast(1.1765) invert(1) hue-rotate(180deg);}
+
+/* =====================================================================
+   Admin panel
+   ===================================================================== */
+.tv-ov.tv-ov-corner{
+  background:transparent;
+  align-items:flex-end; justify-content:flex-start;
+  padding:0 0 16px 16px;
+}
+.tv-ov-corner .tv-box{
+  width:auto; max-width:none; padding:10px 14px;
+  border:1px solid rgba(0,0,0,.08);
+  box-shadow:0 10px 28px rgba(0,0,0,.25);
+  animation:popIn .16s ease;
+}
+.tv-ov-corner .tv-ibtn{width:48px; height:48px;}
+.tv-ov-corner .tv-icons{gap:10px;}

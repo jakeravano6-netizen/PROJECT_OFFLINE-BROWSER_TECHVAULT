@@ -52,7 +52,7 @@
     </div>
   </div>
 
-  <!-- Updates bell (BAGO) -->
+  <!-- Updates bell -->
   <button class="icon-btn" id="updatesBtn" aria-label="Updates" style="position:relative;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
     <span class="tv-dot" id="updDot"></span>
@@ -293,7 +293,7 @@
 <script src="script.js"></script>
 
 <!-- ============================================================
-     ADMIN + UPDATES (Supabase) — BAGO. Walang binago sa script.js
+     ADMIN + UPDATES (Supabase) 
      ============================================================ -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
@@ -311,6 +311,7 @@
   var TV = window.TV = {};
   var updates = [];
   var SEEN_KEY = 'tv_seen_update';
+  TV.reloadAll = async function () { if (!sb) return; await loadAll(); softRefresh(); };
 
   // ---------- helpers ----------
   function esc(s) {
@@ -628,6 +629,7 @@
     var o = modal('<div class="tv-icons">' + items.map(function (x) {
       return '<button type="button" class="tv-ibtn' + (x[0] === 'out' ? ' dng' : '') + '" data-a="' + x[0] + '" title="' + x[1] + '" aria-label="' + x[1] + '">' + ICONS[x[0]] + '</button>';
     }).join('') + '</div>');
+    o.classList.add('tv-ov-corner');
     o.querySelector('.tv-box').classList.add('tv-box-sm');
     o.querySelectorAll('[data-a]').forEach(function (b) {
       b.addEventListener('click', function () {

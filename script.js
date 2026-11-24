@@ -1828,6 +1828,9 @@ logInAs('Guest');
   }
   loadVoices();
   if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = loadVoices;
+  // may phone na huli lumalabas ang listahan ng voices
+  setTimeout(loadVoices, 800);
+  setTimeout(loadVoices, 2500);
 
   var SYM = { '+': 'plus', '-': 'minus', '=': 'equals', '`': 'backtick', '$': 'dollar sign', '%': 'percent', '#': 'number sign',
               '←': 'left arrow', '→': 'right arrow', '↑': 'up arrow', '↓': 'down arrow', '<': 'less than', '>': 'greater than' };
@@ -2113,6 +2116,7 @@ logInAs('Guest');
     timer = setTimeout(function () {
       if (my !== token) return;
       var u = new SpeechSynthesisUtterance(queue[i]);
+      window.raUtter = u; // iwas mawala ang utterance bago matapos (Chrome/Android)
       u.rate = +$rate.value || 1;
       var v = voices[+$voice.value];
       if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-US'; }
@@ -2164,6 +2168,8 @@ logInAs('Guest');
   }
 
   $play.addEventListener('click', function () {
+    // i-unlock ang speech sa mismong tap (kailangan sa phone browsers)
+    try { var u0 = new SpeechSynthesisUtterance(' '); u0.volume = 0; synth.speak(u0); } catch (e) {}
     var sel = getSel() || lastSel;
     if (playing) { pauseSpeech(); return; }
     if (paused && idx >= 0 && (!sel || sel === queueSource)) { speak(idx); return; }
