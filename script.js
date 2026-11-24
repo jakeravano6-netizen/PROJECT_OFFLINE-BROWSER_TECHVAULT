@@ -14,21 +14,16 @@ function ensureUserData(username){
 }
 function getUserData(){ return userStore[currentUser]; }
 
-function persistUserData(){
-  try{
-    const ud = getUserData();
-    if(!ud) return;
-    localStorage.setItem('techvault_' + currentUser, JSON.stringify({ activity: ud.activity || [], videoProgress: ud.videoProgress || {} }));
-  }catch(e){}
-}
+// Hindi na sine-save sa localStorage.
+// Memory lang ang history, kaya mawawala pag nag-refresh o umalis sa web app.
+function persistUserData(){}
+
+// Binubura ang mga lumang history na na-save ng dating version.
 function restoreUserData(username){
   try{
-    const raw = localStorage.getItem('techvault_' + username);
-    if(!raw) return;
-    const d = JSON.parse(raw);
-    const ud = userStore[username];
-    if(Array.isArray(d.activity)) ud.activity = d.activity;
-    if(d.videoProgress) ud.videoProgress = d.videoProgress;
+    Object.keys(localStorage)
+      .filter(function(k){ return k.indexOf('techvault_') === 0; })
+      .forEach(function(k){ localStorage.removeItem(k); });
   }catch(e){}
 }
 
