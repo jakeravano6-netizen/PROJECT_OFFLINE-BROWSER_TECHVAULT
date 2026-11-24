@@ -115,6 +115,7 @@ function attachPlayer(iframe, key){
       events:{
         onStateChange:(e)=>{
           rec.playing = (e.data === 1);
+          if(e.data === 1) stopMusic();
           if(e.data === 1) rec.touched = true;
           if(e.data === 1 || e.data === 2 || e.data === 0) saveWatchProgress(rec, e.data === 0);
         }
@@ -534,6 +535,13 @@ let currentSection = null;
 let playingIndex = null;
 const audioEl = new Audio();
 
+function stopMusic(){
+  try{
+    if(!audioEl.paused) audioEl.pause();
+    if(playingIndex !== null){ playingIndex = null; renderSongList(); }
+  }catch(e){}
+}
+
 const detailTitle = document.getElementById('detailTitle');
 const detailCode = document.getElementById('detailCode');
 const videoGrid = document.getElementById('videoGrid');
@@ -781,6 +789,7 @@ function openCategory(id, fromSidebar){
   if(id === 'music'){ openMusicPopup(); return; }
   const c = findLeaf(id);
   if(!c) return;
+  { const _sec = findSection(c.sectionId); if(!(_sec && _sec.noVideos)) stopMusic(); }
 
   if(fromSidebar && !returningBack && currentCat && currentCat !== id
      && document.getElementById('detailView').classList.contains('active')){
@@ -950,7 +959,7 @@ function triggerDownload(file, filename){
   setTimeout(()=> URL.revokeObjectURL(url), 4000);
 }
 function showSaveHelper(kind, codeText){
-  const label = kind === 'video' ? 'video' : 'kanta';
+  const label = kind === 'video' ? 'video' : 'song';
   const folder = kind === 'video' ? 'videos/' : 'songs/';
   const libraryName = kind === 'video' ? 'VIDEO_LIBRARY' : 'SONG_LIBRARY';
   const overlay = document.createElement('div');
@@ -958,13 +967,13 @@ function showSaveHelper(kind, codeText){
   const box = document.createElement('div');
   box.style.cssText = 'background:#fff;border-radius:16px;max-width:520px;width:100%;padding:22px 24px;font-family:inherit;box-shadow:0 20px 50px rgba(0,0,0,.3);';
   box.innerHTML = `
-    <h3 style="margin:0 0 10px;font-size:1.05rem;">Na-download na ang ${label} — para permanente:</h3>
+    <h3 style="margin:0 0 10px;font-size:1.05rem;">The ${label} was downloaded. To make it permanent:</h3>
     <p style="font-size:.83rem;color:#6E6E73;margin:0 0 12px;line-height:1.6;">
-      1. Ilipat yung na-download na file papunta sa <b>${folder}</b> folder mo (kasama ng HTML file).<br>
-      2. I-paste itong code sa loob ng <b>${libraryName}</b> sa script.js:
+      1. Move the downloaded file into your <b>${folder}</b> folder (next to the HTML file).<br>
+      2. Paste this code inside <b>${libraryName}</b> in script.js:
     </p>
     <textarea readonly style="width:100%;min-height:110px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem;padding:10px;border:1px solid #ddd;border-radius:9px;resize:vertical;box-sizing:border-box;">${codeText}</textarea>
-    <p style="font-size:.76rem;color:#6E6E73;margin:10px 0 0;">3. I-save mo, i-refresh — permanente na.</p>
+    <p style="font-size:.76rem;color:#6E6E73;margin:10px 0 0;">3. Save the file and refresh. It is now permanent.</p>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
       <button id="saveHelperCopy" style="background:#0071E3;color:#fff;border:none;border-radius:10px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">Copy code</button>
       <button id="saveHelperClose" style="background:#F1F1F3;border:none;border-radius:10px;padding:9px 16px;font-size:.82rem;font-weight:700;cursor:pointer;">Close</button>
@@ -973,7 +982,7 @@ function showSaveHelper(kind, codeText){
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   box.querySelector('#saveHelperCopy').addEventListener('click', ()=>{
-    navigator.clipboard.writeText(codeText).then(()=> showToast('Na-copy na ang code!'));
+    navigator.clipboard.writeText(codeText).then(()=> showToast('Code copied!'));
   });
   box.querySelector('#saveHelperClose').addEventListener('click', ()=> overlay.remove());
   overlay.addEventListener('click', (e)=>{ if(e.target === overlay) overlay.remove(); });
@@ -1769,14 +1778,14 @@ logInAs('Guest');
     bar.innerHTML =
       '<span class="ra-note" style="flex:1;min-width:200px;">' +
       (inApp
-        ? 'Hindi gumagana ang Read Aloud sa loob ng Messenger/Facebook browser. Buksan ang link sa Chrome o Safari.'
-        : 'Hindi supported ang Read Aloud sa browser na ito. Subukan ang Chrome, Edge o Safari.') +
+        ? 'Read Aloud does not work inside the Messenger/Facebook browser. Please open this link in Chrome or Safari.'
+        : 'Read Aloud is not supported in this browser. Please try Chrome, Edge or Safari.') +
       '</span>' +
       (isAndroid && inApp ? '<a class="ra-btn ra-main" style="text-decoration:none;" href="' + chromeIntent + '">Open in Chrome</a>' : '') +
       '<button type="button" class="ra-btn" id="raCopyLink">Copy link</button>';
     var copyBtn = document.getElementById('raCopyLink');
     if (copyBtn) copyBtn.addEventListener('click', function () {
-      function done() { if (typeof showToast === 'function') showToast('Na-copy ang link'); }
+      function done() { if (typeof showToast === 'function') showToast('Link copied'); }
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(pageUrl).then(done, function () { window.prompt('Copy this link:', pageUrl); });
       } else { window.prompt('Copy this link:', pageUrl); }
@@ -1985,22 +1994,22 @@ logInAs('Guest');
       wrap.replaceWith(ifr);
       var why;
       if (location.protocol === 'file:') {
-        why = 'Binuksan ang page gamit ang file://. Patakbuhin sa local server (hal. Live Server), hindi sa double-click.';
+        why = 'This page was opened using file://. Please run it on a local server (e.g. Live Server) instead of double-clicking the file.';
       } else if (err && err.code === 'NOLIB') {
-        why = 'Hindi nakita ang PDF.js. Ilagay ang folder na lib/ (pdf.min.mjs at pdf.worker.min.mjs) sa tabi ng index.html, o mag-online.';
+        why = 'PDF.js could not be found. Put the lib/ folder (pdf.min.mjs and pdf.worker.min.mjs) next to index.html, or go online.';
       } else {
-        why = 'Hindi ma-open ang PDF: ' + ((err && err.message) || err) + '. Tiyaking nasa pdf/ folder ang file.';
+        why = 'Could not open the PDF: ' + ((err && err.message) || err) + '. Make sure the file is inside the pdf/ folder.';
       }
       var note = document.createElement('div');
       note.className = 'ra-note';
       note.style.padding = '6px 2px';
-      note.textContent = why + ' (Hindi gagana ang piliin-at-basahin hangga\'t hindi ito naaayos.)';
+      note.textContent = why + ' (Select-and-read will not work until this is fixed.)';
       ifr.parentNode.insertBefore(note, ifr);
       var openLink = document.createElement('a');
       openLink.href = url; openLink.target = '_blank'; openLink.rel = 'noopener';
       openLink.className = 'pdf-open';
       openLink.style.cssText = 'display:inline-block;margin:0 0 8px 2px;';
-      openLink.textContent = 'Buksan ang PDF';
+      openLink.textContent = 'Open PDF';
       ifr.parentNode.insertBefore(openLink, ifr);
     });
   }
