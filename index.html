@@ -300,7 +300,7 @@
 (function () {
   'use strict';
 
-  // ====== I-PASTE DITO ANG SUPABASE PROJECT URL AT ANON KEY MO ======
+  // ======  ====== //
   var SUPABASE_URL = 'https://riqzumvirkdlltimvplj.supabase.co/rest/v1/';
   var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpcXp1bXZpcmtkbGx0aW12cGxqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1MTIwODIsImV4cCI6MjExMTA4ODA4Mn0.u5JVohHldsChZlFk4ZgaintS3soIHFFqHaPOG1t6TPQ';
   // ==================================================================
@@ -342,6 +342,8 @@
     '.tv-btn.dng{background:#FDEDEC;color:#C0392B;}',
     '.tv-btn.sm{padding:6px 12px;font-size:.74rem;margin:8px 6px 0 0;}',
     '.tv-btn:disabled{opacity:.5;cursor:default;}',
+    '.tv-pw{position:relative;}',
+    '.tv-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:#0071E3;font-size:.78rem;font-weight:700;cursor:pointer;padding:6px;}',
     '.tv-grid{display:grid;gap:8px;}',
     '.tv-grid .tv-btn{text-align:left;padding:12px 14px;}',
     '.tv-upd{border:1px solid rgba(0,0,0,.1);border-radius:12px;padding:12px 14px;margin-bottom:10px;}',
@@ -377,6 +379,7 @@
       var v = esc(f.value || ''), id = 'tvf_' + f.id, inp;
       if (f.type === 'area') inp = '<textarea id="' + id + '" rows="' + (f.rows || 3) + '" placeholder="' + esc(f.ph || '') + '">' + v + '</textarea>';
       else if (f.type === 'file') inp = '<input id="' + id + '" type="file" accept="' + (f.accept || '') + '">';
+      else if (f.type === 'password') inp = '<div class="tv-pw"><input id="' + id + '" type="password" style="padding-right:70px;"><button type="button" class="tv-eye" data-eye="' + id + '">Show</button></div>';
       else inp = '<input id="' + id + '" type="' + (f.type || 'text') + '" value="' + v + '" placeholder="' + esc(f.ph || '') + '">';
       return '<label>' + esc(f.label) + '</label>' + inp;
     }).join('');
@@ -384,6 +387,15 @@
       '<div class="tv-err"></div><div class="tv-actions"><button class="tv-btn" data-x type="button">Cancel</button><button class="tv-btn pri" data-ok type="button">' + esc(okLabel) + '</button></div>');
     var err = o.querySelector('.tv-err'), ok = o.querySelector('[data-ok]');
     o.querySelector('[data-x]').addEventListener('click', function () { o.remove(); });
+    o.querySelectorAll('[data-eye]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var i = o.querySelector('#' + b.dataset.eye);
+        var show = i.type === 'password';
+        i.type = show ? 'text' : 'password';
+        b.textContent = show ? 'Hide' : 'Show';
+        i.focus();
+      });
+    });
     function submit() {
       var vals = {};
       fields.forEach(function (f) {
@@ -405,7 +417,7 @@
 
   function toEmbed(s) {
     var m = /(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/)([\w-]{11})/.exec(s || '');
-    if (!m) throw new Error('Maglagay ng valid na YouTube link o embed code.');
+    if (!m) throw new Error('Enter a valid YouTube link or embed code.');
     return '<iframe width="560" height="315" src="https://www.youtube.com/embed/' + m[1] +
       '" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>';
   }
@@ -449,7 +461,7 @@
     if (a && a.id === 'detailView' && currentCat) { renderVideoGrid(); renderSectionGrid(); renderSongList(); }
     else softRefresh();
   }
-  async function afterChange() { await loadAll(); fullRefresh(); showToast('Na-save na'); }
+  async function afterChange() { await loadAll(); fullRefresh(); showToast('Saved'); }
 
   // ---------- hooks sa existing code (walang binago sa script.js) ----------
   isDev = function () { return window.TV_ADMIN === true; };
@@ -484,98 +496,98 @@
   // ---------- admin: videos ----------
   function needImport(v) {
     if (v && v.id) return false;
-    throw new Error('I-import muna ang existing videos (Admin panel > Import).');
+    throw new Error('Import the existing videos first (Admin panel > Import).');
   }
   TV.addVideo = function (leaf) {
     var L = findLeaf(leaf);
-    form('Magdagdag ng video: ' + L.name, [
-      { id: 'name', label: 'Pamagat ng video', value: L.name },
-      { id: 'link', label: 'YouTube link o embed code', type: 'area', ph: 'https://youtu.be/...' },
-      { id: 'desc', label: 'Description ng update (makikita ng users)', type: 'area', value: 'Nagdagdag ng bagong video sa "' + L.name + '".' }
+    form('Add video: ' + L.name, [
+      { id: 'name', label: 'Video title', value: L.name },
+      { id: 'link', label: 'YouTube link or embed code', type: 'area', ph: 'https://youtu.be/...' },
+      { id: 'desc', label: 'Update description (visible to users)', type: 'area', value: 'Added a new video to "' + L.name + '".' }
     ], 'Add', async function (v) {
-      if (!v.name) throw new Error('Lagyan ng pamagat.');
+      if (!v.name) throw new Error('Enter a title.');
       var embed = toEmbed(v.link);
       dbErr(await sb.from('videos').insert({ leaf_id: leaf, name: v.name, embed: embed }));
-      await post('Bagong video: ' + v.name, v.desc, 'video', leaf);
+      await post('New video: ' + v.name, v.desc, 'video', leaf);
       await afterChange();
     });
   };
   TV.editVideo = function (leaf, i) {
     var cur = sharedVideos[leaf][i];
     try { needImport(cur); } catch (e) { showToast(e.message); return; }
-    form('I-edit ang video', [
-      { id: 'name', label: 'Pamagat ng video', value: cur.name },
-      { id: 'link', label: 'YouTube link o embed code (iwan kung hindi papalitan)', type: 'area', value: youtubeIdFromEmbed(cur.embed) ? 'https://youtu.be/' + youtubeIdFromEmbed(cur.embed) : '' },
-      { id: 'desc', label: 'Description ng update (makikita ng users)', type: 'area', value: 'Binago ang video na "' + cur.name + '".' }
+    form('Edit video', [
+      { id: 'name', label: 'Video title', value: cur.name },
+      { id: 'link', label: 'YouTube link or embed code (leave as is to keep it)', type: 'area', value: youtubeIdFromEmbed(cur.embed) ? 'https://youtu.be/' + youtubeIdFromEmbed(cur.embed) : '' },
+      { id: 'desc', label: 'Update description (visible to users)', type: 'area', value: 'Edited the video "' + cur.name + '".' }
     ], 'Save', async function (v) {
-      if (!v.name) throw new Error('Lagyan ng pamagat.');
+      if (!v.name) throw new Error('Enter a title.');
       var embed = v.link ? toEmbed(v.link) : cur.embed;
       dbErr(await sb.from('videos').update({ name: v.name, embed: embed }).eq('id', cur.id));
-      await post('Na-update ang video: ' + v.name, v.desc, 'video', leaf);
+      await post('Video updated: ' + v.name, v.desc, 'video', leaf);
       await afterChange();
     });
   };
   TV.removeVideo = function (leaf, i) {
     var cur = sharedVideos[leaf][i];
     try { needImport(cur); } catch (e) { showToast(e.message); return; }
-    form('Tanggalin ang "' + cur.name + '"?', [
-      { id: 'desc', label: 'Description ng update (makikita ng users)', type: 'area', value: 'Tinanggal ang video na "' + cur.name + '".' }
+    form('Remove "' + cur.name + '"?', [
+      { id: 'desc', label: 'Update description (visible to users)', type: 'area', value: 'Removed the video "' + cur.name + '".' }
     ], 'Remove', async function (v) {
       dbErr(await sb.from('videos').delete().eq('id', cur.id));
-      await post('Tinanggal ang video: ' + cur.name, v.desc, 'video', leaf);
+      await post('Video removed: ' + cur.name, v.desc, 'video', leaf);
       await afterChange();
     });
   };
 
   // ---------- admin: songs ----------
   TV.addSong = function () {
-    form('Magdagdag ng kanta', [
+    form('Add song', [
       { id: 'file', label: 'MP3 / audio file (max 50 MB)', type: 'file', accept: 'audio/*' },
-      { id: 'name', label: 'Pamagat (optional, kukunin sa filename kung blangko)' },
-      { id: 'desc', label: 'Description ng update (makikita ng users)', type: 'area', value: 'Nagdagdag ng bagong kanta sa Music.' }
+      { id: 'name', label: 'Title (optional, uses the file name if blank)' },
+      { id: 'desc', label: 'Update description (visible to users)', type: 'area', value: 'Added a new song to Music.' }
     ], 'Upload', async function (v) {
       var f = v.file;
-      if (!f) throw new Error('Pumili ng audio file.');
-      if (f.size > 50 * 1024 * 1024) throw new Error('Masyadong malaki (max 50 MB).');
+      if (!f) throw new Error('Choose an audio file.');
+      if (f.size > 50 * 1024 * 1024) throw new Error('File is too large (max 50 MB).');
       var path = 'songs/' + Date.now() + '-' + f.name.replace(/[^\w.\-]+/g, '_');
       dbErr(await sb.storage.from('media').upload(path, f, { contentType: f.type || 'audio/mpeg' }));
       var url = sb.storage.from('media').getPublicUrl(path).data.publicUrl;
       var name = v.name || f.name.replace(/\.[^.]+$/, '');
       dbErr(await sb.from('songs').insert({ name: name, url: url, path: path }));
-      await post('Bagong kanta: ' + name, v.desc, 'song');
+      await post('New song: ' + name, v.desc, 'song');
       await afterChange();
     });
   };
   TV.removeSong = function (i) {
     var s = sharedSongs[i];
-    if (!s.id) { showToast('I-import muna ang existing songs (Admin panel > Import).'); return; }
-    form('Tanggalin ang kanta?', [
-      { id: 'desc', label: 'Description ng update (makikita ng users)', type: 'area', value: 'Tinanggal ang kantang "' + s.name + '".' }
+    if (!s.id) { showToast('Import the existing songs first (Admin panel > Import).'); return; }
+    form('Remove this song?', [
+      { id: 'desc', label: 'Update description (visible to users)', type: 'area', value: 'Removed the song "' + s.name + '".' }
     ], 'Remove', async function (v) {
       if (playingIndex === i) { audioEl.pause(); playingIndex = null; }
       dbErr(await sb.from('songs').delete().eq('id', s.id));
       if (s.path) await sb.storage.from('media').remove([s.path]);
-      await post('Tinanggal ang kanta: ' + s.name, v.desc, 'song');
+      await post('Song removed: ' + s.name, v.desc, 'song');
       await afterChange();
     }, s.name);
   };
 
   // ---------- admin: announcement / import / panel ----------
   TV.announce = function () {
-    form('Mag-post ng announcement', [
+    form('Post an announcement', [
       { id: 'title', label: 'Title' },
       { id: 'desc', label: 'Description', type: 'area', rows: 4 }
     ], 'Post', async function (v) {
-      if (!v.title) throw new Error('Lagyan ng title.');
+      if (!v.title) throw new Error('Enter a title.');
       await post(v.title, v.desc, 'general');
-      showToast('Na-post na ang update');
+      showToast('Update posted');
     });
   };
   TV.importExisting = function () {
-    form('I-import ang existing videos at songs', [], 'Import', async function () {
+    form('Import existing videos and songs', [], 'Import', async function () {
       var cv = await sb.from('videos').select('id', { count: 'exact', head: true });
       var cs = await sb.from('songs').select('id', { count: 'exact', head: true });
-      if ((cv.count || 0) > 0 || (cs.count || 0) > 0) throw new Error('May laman na ang database. Hindi na kailangan mag-import.');
+      if ((cv.count || 0) > 0 || (cs.count || 0) > 0) throw new Error('The database already has content. No need to import.');
       var t = Date.now(), vids = [], songs = [];
       Object.keys(VIDEO_LIBRARY).forEach(function (leaf) {
         VIDEO_LIBRARY[leaf].forEach(function (v) {
@@ -588,13 +600,13 @@
       if (vids.length) dbErr(await sb.from('videos').insert(vids));
       if (songs.length) dbErr(await sb.from('songs').insert(songs));
       await afterChange();
-    }, 'Kokopyahin nito ang lahat ng videos at songs na nasa script.js papunta sa database para ma-edit/ma-remove mo na sa admin. Isang beses lang ito gagawin.');
+    }, 'This copies all the videos and songs from script.js into the database so you can edit/remove them as admin. Do this only once.');
   };
   TV.panel = function () {
-    var o = modal('<h3>Admin panel</h3><p class="tv-muted">Para mag-add / edit / remove ng video: buksan ang topic at gamitin ang mga button doon. Para sa kanta: Music popup.</p>' +
-      '<div class="tv-grid"><button class="tv-btn" data-a="announce">Mag-post ng announcement</button>' +
-      '<button class="tv-btn" data-a="song">Magdagdag ng kanta</button>' +
-      '<button class="tv-btn" data-a="import">I-import ang existing videos at songs</button>' +
+    var o = modal('<h3>Admin panel</h3><p class="tv-muted">To add / edit / remove a video, open the topic and use the buttons there. For songs, use the Music popup.</p>' +
+      '<div class="tv-grid"><button class="tv-btn" data-a="announce">Post an announcement</button>' +
+      '<button class="tv-btn" data-a="song">Add song</button>' +
+      '<button class="tv-btn" data-a="import">Import existing videos and songs</button>' +
       '<button class="tv-btn dng" data-a="out">Log out</button></div>' +
       '<div class="tv-actions"><button class="tv-btn" data-x>Close</button></div>');
     o.querySelector('[data-x]').addEventListener('click', function () { o.remove(); });
@@ -609,14 +621,14 @@
     });
   };
   TV.login = function () {
-    if (!sb) { showToast('Hindi pa naka-set ang Supabase URL at key'); return; }
+    if (!sb) { showToast('Supabase URL and key are not set yet'); return; }
     form('Admin login', [
       { id: 'email', label: 'Email', type: 'email' },
       { id: 'pw', label: 'Password', type: 'password' }
     ], 'Log in', async function (v) {
       var r = await sb.auth.signInWithPassword({ email: v.email, password: v.pw });
-      if (r.error) throw new Error('Mali ang email o password.');
-      showToast('Naka-login ka bilang admin');
+      if (r.error) throw new Error(r.error.message);
+      showToast('Logged in as admin');
     });
   };
 
@@ -633,8 +645,8 @@
     var old = document.getElementById('tvPop'); if (old) old.remove();
     var p = document.createElement('div');
     p.className = 'tv-pop'; p.id = 'tvPop';
-    p.innerHTML = '<div style="flex:1;min-width:0"><b>May bagong update</b><span class="t">' + esc(u.title) + '</span></div>' +
-      '<button class="tv-btn pri sm" style="margin:0" data-v>Tingnan</button><button class="x" data-c aria-label="Close">&times;</button>';
+    p.innerHTML = '<div style="flex:1;min-width:0"><b>New update</b><span class="t">' + esc(u.title) + '</span></div>' +
+      '<button class="tv-btn pri sm" style="margin:0" data-v>View</button><button class="x" data-c aria-label="Close">&times;</button>';
     document.body.appendChild(p);
     p.querySelector('[data-c]').addEventListener('click', function () { p.remove(); });
     p.querySelector('[data-v]').addEventListener('click', function () { p.remove(); TV.openUpdates(); });
@@ -646,10 +658,10 @@
       return '<div class="tv-upd' + (isNew ? ' new' : '') + '"><div class="tv-upd-top"><b>' + esc(u.title) + '</b>' + (isNew ? '<span class="tv-new">NEW</span>' : '') + '</div>' +
         '<div class="tv-upd-date">' + esc(fmt(u.created_at)) + '</div>' +
         (u.description ? '<p>' + esc(u.description) + '</p>' : '') +
-        (u.leaf_id && findLeaf(u.leaf_id) ? '<button class="tv-btn sm" data-open="' + esc(u.leaf_id) + '">Buksan ang topic</button>' : '') +
+        (u.leaf_id && findLeaf(u.leaf_id) ? '<button class="tv-btn sm" data-open="' + esc(u.leaf_id) + '">Open topic</button>' : '') +
         (window.TV_ADMIN ? '<button class="tv-btn sm dng" data-del="' + esc(u.id) + '">Delete</button>' : '') + '</div>';
-    }).join('') : '<p class="tv-muted">Wala pang update.</p>';
-    var o = modal('<h3>Mga Update</h3>' + items + '<div class="tv-actions"><button class="tv-btn" data-x>Close</button></div>');
+    }).join('') : '<p class="tv-muted">No updates</p>';
+    var o = modal('<h3>Updates</h3>' + items + '<div class="tv-actions"><button class="tv-btn" data-x>Close</button></div>');
     o.querySelector('[data-x]').addEventListener('click', function () { o.remove(); });
     o.querySelectorAll('[data-open]').forEach(function (b) {
       b.addEventListener('click', function () { o.remove(); openCategory(b.dataset.open); });
@@ -665,7 +677,7 @@
   };
   var bell = document.getElementById('updatesBtn');
   if (bell) bell.addEventListener('click', function () {
-    if (!sb) { showToast('Hindi pa naka-set ang Supabase'); return; }
+    if (!sb) { showToast('Supabase is not set up yet'); return; }
     TV.openUpdates();
   });
 
@@ -694,7 +706,7 @@
 
   // ---------- start ----------
   async function init() {
-    if (!sb) { console.warn('TechVault: i-set ang SUPABASE_URL at SUPABASE_KEY sa index.html'); return; }
+    if (!sb) { console.warn('TechVault: set SUPABASE_URL and SUPABASE_KEY in index.html'); return; }
     await loadAll();
     await fetchUpdates();
 
