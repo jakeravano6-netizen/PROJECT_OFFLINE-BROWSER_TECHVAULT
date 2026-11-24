@@ -703,7 +703,7 @@
     TV.openUpdates();
   });
 
-  // ---------- admin entry point: sidebar item, hidden from users ----------
+  // ---------- admin entry point: sidebar item ----------
   var sideAdmin = document.createElement('button');
   sideAdmin.type = 'button';
   sideAdmin.className = 'tv-side-admin';
@@ -714,12 +714,10 @@
     if (typeof closeSidebar === 'function') closeSidebar();
     window.TV_ADMIN ? TV.panel() : TV.login();
   });
-  // Visible lang kapag naka-login ang admin o kapag may #admin sa dulo ng URL
+  // Laging nakikita ang Admin button sa ilalim ng Microsoft PowerPoint
   function updateAdminVisibility() {
-    var secret = location.hash.toLowerCase() === '#admin';
-    sideAdmin.style.display = (window.TV_ADMIN || secret) ? 'flex' : 'none';
+    sideAdmin.style.display = 'flex';
   }
-  window.addEventListener('hashchange', updateAdminVisibility);
   updateAdminVisibility();
 
   function applyAuth(session) {
